@@ -28,7 +28,7 @@ A2840A1_RANDOM_GAMES = {
 }
 
 # Every realism option, explicitly off.
-OPTIONS_OFF = {"pve_damage": False, "carousel_pickers": None, "carousel_fixes": False}
+OPTIONS_OFF = {"pve_damage": False, "carousel_pickers": None, "carousel_fixes": False, "fortune_orbs": False}
 
 
 @contextlib.contextmanager

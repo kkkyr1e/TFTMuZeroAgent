@@ -61,6 +61,11 @@ class TFTConfig:
     # tier always holds the same items) and the fifth carousel (5-4) uses the Set 4 table
     # (50% random components instead of full items).
     carousel_fixes: bool = False
+    # If True, Fortune pays a loot orb on a win (contents worth the Set 4 loss table on average:
+    # gold, champions, components, Neeko's Help, Spatulas) instead of ceil(table) gold, the loss
+    # counter counts each loss once and stops at 12, and 6 Fortune adds an extra orb (11.65 gold
+    # on average). Off by default (old behaviour). See Simulator/game/loot_orb.py.
+    fortune_orbs: bool = False
 
 def env(config: TFTConfig = TFTConfig()):
     """

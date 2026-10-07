@@ -29,6 +29,7 @@ class PlayerManager:
         }
         for player_state in self.player_states.values():
             player_state.actions_per_round = tft_config.max_actions_per_round
+            player_state.fortune_orbs = getattr(tft_config, "fortune_orbs", False)
 
         self.observation_states = {
             player: tft_config.observation_class(self.player_states[player])
@@ -180,6 +181,7 @@ class PlayerManager:
                 self.player_states[f"player_{x}"] = player_class(self.pool_obj, x)
         for player_state in self.player_states.values():
             player_state.actions_per_round = self.config.max_actions_per_round
+            player_state.fortune_orbs = getattr(self.config, "fortune_orbs", False)
 
         self.observation_states = {
             player: self.config.observation_class(self.player_states[player])
