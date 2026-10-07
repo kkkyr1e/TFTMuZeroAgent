@@ -14,6 +14,7 @@ from Simulator.battle.stats import COST
 from Simulator.game.pool_stats import cost_star_values
 from Simulator.game.rules import get_rules
 from Simulator.battle.origin_class_stats import tiers, fortune_returns
+from Simulator.game import loot_orb
 from math import floor
 from Simulator.config import DEBUG, CHAMPION_ACTION_DIM, TIERS_FLATTEN_LENGTH, TEAM_TIERS_VECTOR, ALLOW_SPILL
 
@@ -57,6 +58,12 @@ class Player:
 
         # For purposes of gold generation if fortune trait is active
         self.fortune_loss_streak = 0
+        # TFTConfig.fortune_orbs (set by PlayerManager): Fortune pays loot orbs (loot_orb.py) on a
+        # win instead of plain gold, the loss counter counts each loss once and stops at 12, and
+        # 6 Fortune adds an extra orb. Off: the old gold payout.
+        self.fortune_orbs = False
+        # Orbs paid with fortune_orbs: one dict per payout (round, losses, contents).
+        self.fortune_orb_log = []
 
         # --- Public Objects ---
         # Bench Champions
@@ -1896,6 +1903,9 @@ class Player:
             self.match_history.append(1)
 
             if self.team_tiers['fortune'] > 0:
+                if self.fortune_orbs:
+                    self.fortune_orb_payout()
+                    return
                 if self.fortune_loss_streak >= len(fortune_returns):
                     self.gold += math.ceil(fortune_returns[len(fortune_returns) - 1] +
                                            15 * (self.fortune_loss_streak - len(fortune_returns)))
@@ -1921,6 +1931,9 @@ class Player:
             self.match_history.append(1)
 
             if self.team_tiers['fortune'] > 0:
+                if self.fortune_orbs:
+                    self.fortune_orb_payout()
+                    return
                 if self.fortune_loss_streak >= len(fortune_returns):
                     self.gold += math.ceil(fortune_returns[len(fortune_returns) - 1] +
                                            15 * (self.fortune_loss_streak - len(fortune_returns)))
@@ -1946,9 +1959,24 @@ class Player:
             self.match_history.append(0)
 
             if self.team_tiers['fortune'] > 0:
+                if self.fortune_orbs:
+                    self.fortune_loss_streak = min(self.fortune_loss_streak + 1, loot_orb.FORTUNE_MAX_LOSSES)
+                    return
                 self.fortune_loss_streak += 1
                 if self.team_tiers['fortune'] > 1:
                     self.fortune_loss_streak += 1
+
+    def fortune_orb_payout(self):
+        """Fortune win with TFTConfig.fortune_orbs: a loot orb worth the loss table on average
+        (loot_orb.FORTUNE_ORB_VALUES) and, with 6 Fortune, the extra orb; resets the counter."""
+        orbs = [loot_orb.gen_fortune_orb(self.fortune_loss_streak)]
+        if self.team_tiers['fortune'] > 1:
+            orbs.append(loot_orb.gen_fortune_extra_orb())
+        for contents in orbs:
+            loot_orb.give_fortune_orb(self, contents)
+        self.fortune_orb_log.append({"round": self.round, "losses": self.fortune_loss_streak, "orbs": orbs})
+        self.print("Fortune orbs after {} losses: {}".format(self.fortune_loss_streak, orbs))
+        self.fortune_loss_streak = 0
 
     def pve_loss(self, damage):
         """HP and reward for losing (or timing out) a fight against monsters (TFTConfig.pve_damage).
