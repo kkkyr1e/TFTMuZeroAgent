@@ -25,6 +25,7 @@ env.close()
 |-------|---------|---------|
 | `num_players` | set to `1` if omitted | Still builds an 8-seat pool; you only act as `player_0` |
 | `max_actions_per_round` | `15` | Shop actions before the round fights |
+| `rules` | `"set4"` | Economy profile, `"set4"` or `"set18"` (see the full-game doc) |
 | `action_class` | `ActionToken` | Same discrete grid as the full game |
 | `multi_step_position` | `False` | Stored; shop actions stay the full `ActionToken` space |
 | `render_mode` | `None` | `"porosight"` writes a campaign replay |

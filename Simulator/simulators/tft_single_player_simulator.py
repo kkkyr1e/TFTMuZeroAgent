@@ -8,6 +8,7 @@ from Simulator.game.game_round import log_to_file_start
 from Simulator.game.single_player_game_round import Game_Round
 from Simulator.encoding.token.basic_observation import ObservationToken
 from Simulator.game.player_manager import PlayerManager
+from Simulator.game.rules import get_rules
 from Simulator.game.step_function import Step_Function
 from Simulator.simulators.tft_simulator import TFTConfig
 from Simulator.simulators.ui import GameState, is_porosight_render
@@ -44,6 +45,7 @@ class TFT_Single_Player_Simulator(gym.Env):
         self.action_count = 0
         self.max_actions_per_round = tft_config.max_actions_per_round
         self.pass_ends_turn = tft_config.pass_ends_turn
+        self.rules = get_rules(tft_config.rules)
         mask_space = getattr(tft_config.action_class, "action_mask_space", None)
         self.observation_space = Dict({
             "observations": self.observation_class.player_observation_space(),
@@ -57,7 +59,7 @@ class TFT_Single_Player_Simulator(gym.Env):
             return self._reset_bound()
 
     def _reset_bound(self):
-        pool_obj = pool.pool()
+        pool_obj = pool.pool(rules=self.rules)
         self.player_manager = PlayerManager(config.NUM_PLAYERS, pool_obj,
                                             TFTConfig(observation_class=self.observation_class,
                                                       action_class=self.action_class,

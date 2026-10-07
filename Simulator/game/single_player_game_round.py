@@ -3,22 +3,18 @@ import time
 from Simulator.battle import champion, minion
 from Simulator.battle.combat_context import get_ctx
 from Simulator.game.carousel import carousel
+from Simulator.game.rules import get_rules
 from Simulator.game.game_round import log_to_file, log_to_file_combat, log_to_file_start, log_end_turn
 from Simulator.generators.position_leveling_system import PositionLevelingSystem
 from copy import deepcopy
 
 
 class Game_Round:
-    def __init__(self, game_player, pool_obj, step_func_obj):
+    def __init__(self, game_player, pool_obj, step_func_obj, rules=None):
+        # Economy rules profile; defaults to the pool's (Set 4 when the pool has none).
+        self.rules = get_rules(rules if rules is not None else getattr(pool_obj, "rules", None))
         # Amount of damage taken as a base per round. First number is max round, second is damage
-        self.ROUND_DAMAGE = [
-            [8, 0],
-            [14, 2],
-            [20, 3],
-            [26, 5],
-            [32, 8],
-            [10000, 15]
-        ]
+        self.ROUND_DAMAGE = self.rules.round_damage_table()
         self.PLAYER = game_player
         self.pool_obj = pool_obj
         self.step_func_obj = step_func_obj

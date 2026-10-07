@@ -29,6 +29,7 @@ from Simulator.simulators.tft_simulator import TFTConfig, parallel_env, env as t
 | `num_players` | `8` | Agents (`player_0` …) |
 | `max_actions_per_round` | `15` | Shop-phase actions per player per round (passes count) |
 | `pass_ends_turn` | `False` | A pass ends that player's shop phase for the round |
+| `rules` | `"set4"` | Economy profile: `"set4"` or `"set18"` (Set 18 shop odds, pool copies, XP table and level 10, streak gold, player damage; units, traits, items and combat stay Set 4). See `Simulator/game/rules.py` and FORK_NOTES.md |
 | `reward_type` | `"winloss"` | Placement-style reward |
 | `render_mode` | `None` | `"porosight"` writes a PoroSight dump |
 | `render_path` | `"Games"` | Directory for JSON dumps |

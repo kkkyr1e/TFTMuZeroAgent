@@ -535,6 +535,18 @@ class champion:
             return True
         return False
 
+def unit_damage(player_1, player_2, survivors):
+    """Player damage from the winner's surviving units, from the players' rules profile.
+
+    Uses the first side that has a profile (a PvE Minion has none) and falls back to the
+    Set 4 DAMAGE_PER_UNIT table.
+    """
+    rules = getattr(player_1, "rules", None) or getattr(player_2, "rules", None)
+    if rules is None:
+        return DAMAGE_PER_UNIT[survivors]
+    return rules.unit_damage(survivors)
+
+
 def run(champion_q, player_1, player_2, round_damage=0):
     ctx = get_ctx()
     ctx.reset_combat()
@@ -570,11 +582,11 @@ def _run_battle(champion_q, player_1, player_2, round_damage, ctx: CombatContext
         elif len(red) == 0:
             printt('BLUE TEAM WON')
             survive_combat(player_1, blue)
-            return 1, round_damage + DAMAGE_PER_UNIT[len(blue)]
+            return 1, round_damage + unit_damage(player_1, player_2, len(blue))
         elif len(blue) == 0:
             printt('RED TEAM WON')
             survive_combat(player_2, red)
-            return 2, round_damage + DAMAGE_PER_UNIT[len(red)]
+            return 2, round_damage + unit_damage(player_1, player_2, len(red))
 
     # Not quite sure what is happening in these lines. 
     # They are effects that happen at the start of the fight.
@@ -678,16 +690,16 @@ def _run_battle(champion_q, player_1, player_2, round_damage, ctx: CombatContext
                 printt('BLUE TEAM WON')
                 for unit in blue:
                     printt(unit.name)
-                printt("player_1 dealt round damage = {}".format(round_damage + DAMAGE_PER_UNIT[len(blue)]))
+                printt("player_1 dealt round damage = {}".format(round_damage + unit_damage(player_1, player_2, len(blue))))
                 survive_combat(player_1, blue)
-                return 1, (round_damage + DAMAGE_PER_UNIT[len(blue)])
+                return 1, (round_damage + unit_damage(player_1, player_2, len(blue)))
             elif len(blue) == 0:
                 printt('RED TEAM WON')
                 for unit in red:
                     printt(unit.name)
-                printt("player_2 dealt round damage = {}".format(round_damage + DAMAGE_PER_UNIT[len(red)]))
+                printt("player_2 dealt round damage = {}".format(round_damage + unit_damage(player_1, player_2, len(red))))
                 survive_combat(player_2, red)
-                return 2, (round_damage + DAMAGE_PER_UNIT[len(red)])
+                return 2, (round_damage + unit_damage(player_1, player_2, len(red)))
             break
         if MILLIS() > 150000:
             # print("Round has gone on too long")

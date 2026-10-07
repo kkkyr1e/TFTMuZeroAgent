@@ -12,6 +12,7 @@ from Simulator.battle.item_stats import basic_items, item_builds, thieves_gloves
 
 from Simulator.battle.stats import COST
 from Simulator.game.pool_stats import cost_star_values
+from Simulator.game.rules import get_rules
 from Simulator.battle.origin_class_stats import tiers, fortune_returns
 from math import floor
 from Simulator.config import DEBUG, CHAMPION_ACTION_DIM, TIERS_FLATTEN_LENGTH, TEAM_TIERS_VECTOR, ALLOW_SPILL
@@ -29,13 +30,17 @@ Inputs      - pool_pointer: Pool object pointer
                 An identifier for the player, used in match_making for combats
 """
 class Player:
-    def __init__(self, pool_pointer, player_num):
+    def __init__(self, pool_pointer, player_num, rules=None):
 
         self.player_num = player_num
 
         # Everyone shares the pool object.
         # Required for buying champions to and from the pool
         self.pool_obj = pool_pointer
+
+        # Economy rules profile (Simulator/game/rules.py). Defaults to the pool's profile, so every
+        # player in a game follows the same rules; Set 4 when the pool has none.
+        self.rules = get_rules(rules if rules is not None else getattr(pool_pointer, "rules", None))
 
         # --- Public Scalar Values ---
         self.level = 1
@@ -119,11 +124,12 @@ class Player:
         self.max_units = 1
 
         # --- Game Configuration Variables ---
-        self.refresh_cost = 2
-        self.exp_cost = 4
-        # Amount of gold required to level differs based on level
-        self.level_costs = [0, 2, 2, 6, 10, 20, 36, 56, 80, 100]
-        self.max_level = 9
+        self.refresh_cost = self.rules.refresh_cost
+        # Gold per Buy XP
+        self.exp_cost = self.rules.xp_purchase_cost
+        # XP needed to go from level i to i + 1 (index = level); the last entry is unused
+        self.level_costs = list(self.rules.level_costs)
+        self.max_level = self.rules.max_level
 
         # --- Reward Variables ---
         # Using this to track the reward gained by each player for the AI to train.
@@ -202,7 +208,7 @@ class Player:
             return False
 
         self.gold -= self.exp_cost
-        self.exp += self.exp_cost
+        self.exp += self.rules.xp_per_purchase
         self.level_up()  # Level up if you have enough exp
 
         self.print(f"exp to {self.exp} on level {self.level}")
@@ -1075,24 +1081,24 @@ class Player:
 
     # --- Game Mechanics Functions --- #
     def gold_income(self, t_round):
-        self.exp += 2
+        """Passive XP and gold at the start of a planning phase, following self.rules.
+
+        Rounds 0-3 are the planning phases of 1-2, 1-3, 1-4 and 2-1 (round 0 is the 1-1 carousel
+        plus the 1-2 fight), which pay rules.early_round_gold (2 / 2 / 3 / 4) plus interest.
+        From 2-2 on it is rules.base_income (5) + interest + streak gold. Interest is counted on
+        the gold held before the income.
+        """
+        rules = self.rules
+        self.exp += rules.xp_per_round
         self.level_up()
-        # Rounds 0-3 are the planning phases of 1-2, 1-3, 1-4 and 2-1 (round 0 is the 1-1 carousel
-        # plus the 1-2 fight), which pay 2 / 2 / 3 / 4 gold. From 2-2 on it is 5 + interest + streak.
-        if t_round <= 3:
-            starting_round_gold = [2, 2, 3, 4]
-            self.gold += floor(self.gold / 10)
-            self.gold += starting_round_gold[t_round]
+        if t_round < len(rules.early_round_gold):
+            self.gold += rules.interest(self.gold)
+            self.gold += rules.early_round_gold[t_round]
             return
-        interest = min(floor(self.gold / 10), 5)
-        self.gold += interest
-        self.gold += 5
-        if self.win_streak == 2 or self.win_streak == 3 or self.loss_streak == 2 or self.loss_streak == 3:
-            self.gold += 1
-        elif self.win_streak == 4 or self.loss_streak == 4:
-            self.gold += 2
-        elif self.win_streak >= 5 or self.loss_streak >= 5:
-            self.gold += 3
+        self.gold += rules.interest(self.gold)
+        self.gold += rules.base_income
+        # A win resets the loss streak and a loss resets the win streak, so at most one is non-zero.
+        self.gold += rules.streak_bonus(max(self.win_streak, self.loss_streak))
 
     def end_turn_actions(self):
         # autofill the board.
@@ -1885,7 +1891,7 @@ class Player:
         if not self.combat:
             self.win_streak += 1
             self.loss_streak = 0
-            self.gold += 1
+            self.gold += self.rules.pvp_win_gold
             self.print("won round against a ghost")
             self.match_history.append(1)
 
@@ -1908,7 +1914,7 @@ class Player:
         if not self.combat:
             self.win_streak += 1
             self.loss_streak = 0
-            self.gold += 1
+            self.gold += self.rules.pvp_win_gold
             self.reward += self.damage_reward * damage
             self.print(str(self.damage_reward * damage) + " reward for winning round against player " +
                        str(self.opponent.player_num))

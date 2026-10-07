@@ -5,10 +5,13 @@ from Simulator.game.pool_stats import *
 random = RandomProxy()
 from Simulator.battle.origin_class_stats import origin_class, chosen_exclude
 from Simulator.config import LOGMESSAGES
+from Simulator.game.rules import get_rules
 
 
 class pool:
-	def __init__(self):
+	def __init__(self, rules=None):
+		# Economy rules (shop odds, copies per champion). Players and Game_Round read them from here.
+		self.rules = get_rules(rules)
 		self.num_cost_1 = 0
 		self.num_cost_2 = 0
 		self.num_cost_3 = 0
@@ -52,22 +55,13 @@ class pool:
 		return chosen_type
 
 	def reset(self):
-		self.COST_1 = COST_1.copy()
-		self.COST_2 = COST_2.copy()
-		self.COST_3 = COST_3.copy()
-		self.COST_4 = COST_4.copy()
-		self.COST_5 = COST_5.copy()
-
-		# for key in COST_1:
-		# 	COST_1[key] = base_pool_values[0]
-		# for key in COST_2:
-		# 	COST_2[key] = base_pool_values[1]
-		# for key in COST_3:
-		# 	COST_3[key] = base_pool_values[2]
-		# for key in COST_4:
-		# 	COST_4[key] = base_pool_values[3]
-		# for key in COST_5:
-		# 	COST_5[key] = base_pool_values[4]
+		# Set 4 roster, with the profile's number of copies per champion for each cost
+		copies = self.rules.pool_copies
+		self.COST_1 = {name: copies[0] for name in COST_1}
+		self.COST_2 = {name: copies[1] for name in COST_2}
+		self.COST_3 = {name: copies[2] for name in COST_3}
+		self.COST_4 = {name: copies[3] for name in COST_4}
+		self.COST_5 = {name: copies[4] for name in COST_5}
 
 	# Used when a player dies.
 	def return_hero(self, player):
@@ -100,9 +94,9 @@ class pool:
 		index = idx
 		for i in range(0, num):
 			if chosen_index != i:
-				percents = level_percentage[player.level]
+				percents = self.rules.shop_odds[player.level]
 			else:
-				percents = chosen_stats[player.level]
+				percents = self.rules.chosen_odds[player.level]
 			ranInt[i] = random.random()
 			if index == -1:
 				index = 0
@@ -206,36 +200,36 @@ class pool:
 			self.COST_1[u_champion.name] += quantity
 			if self.COST_1[u_champion.name] < 0:
 				self.COST_1[u_champion.name] = 0
-			elif self.COST_1[u_champion.name] > base_pool_values[0]:
-				self.COST_1[u_champion.name] = base_pool_values[0]
+			elif self.COST_1[u_champion.name] > self.rules.pool_copies[0]:
+				self.COST_1[u_champion.name] = self.rules.pool_copies[0]
 			self.update_stats(one=True)
 		elif cost == 2:
 			self.COST_2[u_champion.name] += quantity
 			if self.COST_2[u_champion.name] < 0:
 				self.COST_2[u_champion.name] = 0
-			elif self.COST_2[u_champion.name] > base_pool_values[1]:
-				self.COST_2[u_champion.name] = base_pool_values[1]
+			elif self.COST_2[u_champion.name] > self.rules.pool_copies[1]:
+				self.COST_2[u_champion.name] = self.rules.pool_copies[1]
 			self.update_stats(two=True)
 		elif cost == 3:
 			self.COST_3[u_champion.name] += quantity
 			if self.COST_3[u_champion.name] < 0:
 				self.COST_3[u_champion.name] = 0
-			elif self.COST_3[u_champion.name] > base_pool_values[2]:
-				self.COST_3[u_champion.name] = base_pool_values[2]
+			elif self.COST_3[u_champion.name] > self.rules.pool_copies[2]:
+				self.COST_3[u_champion.name] = self.rules.pool_copies[2]
 			self.update_stats(three=True)
 		elif cost == 4:
 			self.COST_4[u_champion.name] += quantity
 			if self.COST_4[u_champion.name] < 0:
 				self.COST_4[u_champion.name] = 0
-			elif self.COST_4[u_champion.name] > base_pool_values[3]:
-				self.COST_4[u_champion.name] = base_pool_values[3]
+			elif self.COST_4[u_champion.name] > self.rules.pool_copies[3]:
+				self.COST_4[u_champion.name] = self.rules.pool_copies[3]
 			self.update_stats(four=True)
 		elif cost == 5:
 			self.COST_5[u_champion.name] += quantity
 			if self.COST_5[u_champion.name] < 0:
 				self.COST_5[u_champion.name] = 0
-			elif self.COST_5[u_champion.name] > base_pool_values[4]:
-				self.COST_5[u_champion.name] = base_pool_values[4]
+			elif self.COST_5[u_champion.name] > self.rules.pool_copies[4]:
+				self.COST_5[u_champion.name] = self.rules.pool_copies[4]
 			self.update_stats(five=True)
 
 	def update_stats(self, allV=False, one=False, two=False, three=False, four=False, five=False):

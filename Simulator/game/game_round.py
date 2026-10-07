@@ -4,6 +4,7 @@ from Simulator.battle import champion, minion
 from Simulator.battle.champion_functions import MILLIS
 from Simulator.battle.combat_context import NPRandomProxy, RandomProxy, get_ctx
 from Simulator.game.carousel import carousel
+from Simulator.game.rules import get_rules
 from Simulator.battle.alt_autobattler import alt_auto_battle
 from copy import deepcopy
 
@@ -12,18 +13,14 @@ _np_random = NPRandomProxy()
 
 
 class Game_Round:
-    def __init__(self, game_players, pool_obj, step_func_obj):
+    def __init__(self, game_players, pool_obj, step_func_obj, rules=None):
+        # Economy rules profile; defaults to the pool's (Set 4 when the pool has none).
+        self.rules = get_rules(rules if rules is not None else getattr(pool_obj, "rules", None))
         # Amount of damage taken as a base per round. First number is max round, second is damage
         # Rounds 0-2 are stage 1, then each stage is 6 rounds (round 3 = 2-1, 9 = 3-1, ...).
-        # Base damage per stage is 0/0/2/3/5/8/15 for stages 1-7 (patch 10.24 values).
-        self.ROUND_DAMAGE = [
-            [8, 0],
-            [14, 2],
-            [20, 3],
-            [26, 5],
-            [32, 8],
-            [10000, 15]
-        ]
+        # Set 4: base damage per stage is 0/0/2/3/5/8/15 for stages 1-7 (patch 10.24 values).
+        # Set 18: 0/2/6/7/10/12/17 for stages 1-7 and 150 from stage 8.
+        self.ROUND_DAMAGE = self.rules.round_damage_table()
         self.PLAYERS = game_players
         self.pool_obj = pool_obj
         self.step_func_obj = step_func_obj

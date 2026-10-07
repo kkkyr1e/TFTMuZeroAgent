@@ -377,14 +377,14 @@ class ObservationToken(ObservationBase, ObservationUpdateBase):
             if i != player.player_num:
                 next_fight_scalar *= 2
                 next_fight_scalar += x
-        # 10 values
+        # 10 values (11 with the Set 18 rules, which allow level 10)
         level = player.level
         assert gold <= 60
         assert health <= 100
         assert exp_to_level <= 100
         assert game_round < 40
         assert next_fight_scalar < 256
-        assert level < 10
+        assert level <= player.max_level
         return np.array([gold, health, exp_to_level, game_round, next_fight_scalar, level], dtype=np.int16)
 
     # -- Champion -- #

@@ -259,14 +259,9 @@ def minion_round(player, current_round, others=None, other_rewards=None):
 
 # modeled after combat_phase from game_round.py, except with a minion "player" versus the player
 def minion_combat(player, enemy, round, others=None, other_rewards=True):
-    ROUND_DAMAGE = [
-            [8, 0],
-            [14, 2],
-            [20, 3],
-            [26, 5],
-            [32, 8],
-            [10000, 15]
-        ]
+    # Base damage table of the player's rules profile (Simulator/game/rules.py); Set 4 by default.
+    from Simulator.game.rules import get_rules
+    ROUND_DAMAGE = get_rules(getattr(player, "rules", None)).round_damage_table()
     from Simulator.battle.combat_context import get_ctx
     get_ctx().warlord_wins['blue'] = player.win_streak
     player.end_turn_actions()

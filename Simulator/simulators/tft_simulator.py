@@ -16,6 +16,7 @@ from Simulator.game import pool
 from Simulator.game.game_round import Game_Round
 
 from Simulator.game.player_manager import PlayerManager
+from Simulator.game.rules import get_rules
 from Simulator.game.step_function import Step_Function
 from Simulator.simulators.ui import GameState, is_porosight_render
 
@@ -44,6 +45,10 @@ class TFTConfig:
     multi_step_position: bool = False
     preset_battle: bool = False
     step_until_units_placed: bool = False
+    # Economy rules profile (Simulator/game/rules.py): "set4" (default) or "set18". Only the
+    # economy changes (shop odds, pool copies, XP table, income, streaks, player damage);
+    # champions, traits, items and combat stay Set 4.
+    rules: str = "set4"
 
 def env(config: TFTConfig = TFTConfig()):
     """
@@ -77,6 +82,8 @@ class TFT_Simulator(AECEnv):
         )
 
         self.config = config
+        # Fail early on an unknown profile name
+        get_rules(config.rules)
 
         self.render_mode = config.render_mode
         self.render_path = config.render_path
@@ -154,7 +161,7 @@ class TFT_Simulator(AECEnv):
         self.num_alive = self.num_players
 
         # --- TFT Game Related Variables ---
-        self.pool_obj = pool.pool()
+        self.pool_obj = pool.pool(rules=self.config.rules)
 
         # --- TFT Player Related Variables ---
         self.player_manager = PlayerManager(self.num_players, self.pool_obj, self.config)
