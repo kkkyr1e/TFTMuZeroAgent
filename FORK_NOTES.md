@@ -3,7 +3,8 @@
 Fixes and options on top of upstream `main` at `a5718dd` (silverlight6/TFTMuZeroAgent).
 Each bug fix is its own branch off `a5718dd` with one unit test and can go upstream as a
 standalone PR. `develop` merges all of them plus `action-budget-options`. This file exists
-only on `develop` and on `rules-profile` (branched from `develop` at `9149656`).
+only on `develop` and on the branches made from it: `rules-profile` (from `9149656`) and the
+realism branches of the "Realism options" section (from `a2840a1` on), which carry it unchanged.
 
 Round indices: idx0 = 1-1 carousel + 1-2 PvE, idx1 = 1-3, idx2 = 1-4, then six indices per
 stage from idx3 = 2-1 (x-1 .. x-7, with the x-4 carousel folded into x-5). So idx8 = 2-7,
@@ -23,8 +24,8 @@ idx9 = 3-1, idx32 = 6-7, idx38 = 7-7. File:line references are to `a5718dd`.
 | 7a | Rule bot: "katerina" | `Simulator/generators/default_agent_stats.py:54, 69, 102` | Unit is Katarina (`katarina` in the pool) | Bug | `fix-default-agent` | `UnitTests/default_agent_test.py::test_every_name_in_the_bot_tables_is_a_champion`, `::test_katarina_gets_a_board_slot` | Default_Agent baselines only |
 | 7b | Rule bot: bench-to-board swap dead | `Simulator/generators/default_agent.py:317, 324` (round_3_10, also returned buy "3_" instead of move "5_"), `484` (round_11_end) | n/a (bot logic) | Bug. Champion object compared with a list of names | `fix-default-agent` | `::test_round_3_10_swaps_a_better_bench_unit_in`, `::test_round_11_end_swaps_a_comp_unit_in` | Default_Agent baselines only |
 | 8a | Chosen units "1-star at base cost" | `Simulator/game/player.py:341`; `Simulator/encoding/token/action.py:317` | Chosen "are already at 2-star level, so they cost three times their normal 1-star price" (patch 10.19 notes) | Bug in price only. The audit claim is partly wrong: Chosen are 2-star, take 3 copies from the pool and fight with 2-star stats. They were charged the 2-star sell value (3/5/8/11/14) instead of 3/6/9/12/15 | `fix-chosen-price` | `UnitTests/chosen_price_test.py` (11 cases) | Yes: Chosen cost 1 more gold for 2-5 costs |
-| 8b | Fortune pays +3 on every win | `Simulator/game/player.py:1875-1883, 1900-1908, 1925-1928`; `Simulator/battle/origin_class_stats.py:304` | Fortune pays out on a win by rounds lost; wiki table 2.5/6/10.5/17/24/31/38/45/55/70 for 0-9 losses (wiki.leagueoflegends.com/en-us/Fortune_(Teamfight_Tactics)); V10.20 set the 0-loss value to 3, V10.21 to 2.5; 6 Fortune adds an extra orb on a win | Design approximation, not changed. Sim pays `ceil(value)` as plain gold (3 after 0 losses, which is the "+3 on every win"); the real payout is a loot orb of that value. 6 Fortune counts losses twice instead of an extra orb | none | none | n/a |
-| 9 | Matchups fixed before planning | `Simulator/game/game_round.py:291-296` (`decide_player_combat` in `start_round`), `257-284` (`opponent_options`), `274-275` (`possible_opponents` reset); obs `Simulator/encoding/token/basic_observation.py:368-376`, `Simulator/encoding/vector/observation.py:289-294`; infos `Simulator/simulators/tft_simulator.py:162, 292, 347` | The real client does not show the next opponent; trackers can narrow the candidates but not pinpoint them (Upcomer, 2021) | Design choice with information exposure, not changed. The obs candidate set is the eligible seats plus the real opponent, which `game_round.py:270-273` always adds (`1 not in opponent_options` tests the keys, so it is always true); that is the tracker view. Exact leaks: when nobody is eligible the set is only the real opponent, and the ghost fight names the copied seat (`game_round.py:280-284`); on main a drawn ineligible opponent can also stand out (fixed by #4). Outside the obs: `info["player"]` is the live Player, and its `possible_opponents` is already 0 for the drawn opponent (`game_round.py:274-275`); `env.unwrapped.game_round.matchups` lists every pairing | none | none | n/a |
+| 8b | Fortune pays +3 on every win | `Simulator/game/player.py:1875-1883, 1900-1908, 1925-1928`; `Simulator/battle/origin_class_stats.py:304` | Fortune pays out on a win by rounds lost; wiki table 2.5/6/10.5/17/24/31/38/45/55/70 for 0-9 losses (wiki.leagueoflegends.com/en-us/Fortune_(Teamfight_Tactics)); V10.20 set the 0-loss value to 3, V10.21 to 2.5; 6 Fortune adds an extra orb on a win | Design approximation; now `TFTConfig(fortune_orbs=True)`, see row 13. Sim pays `ceil(value)` as plain gold (3 after 0 losses, which is the "+3 on every win"); the real payout is a loot orb of that value. 6 Fortune counts losses twice instead of an extra orb | `realism-fortune-orbs` (row 13) | `fortune_orbs_test.py` | No with defaults |
+| 9 | Matchups fixed before planning | `Simulator/game/game_round.py:291-296` (`decide_player_combat` in `start_round`), `257-284` (`opponent_options`), `274-275` (`possible_opponents` reset); obs `Simulator/encoding/token/basic_observation.py:368-376`, `Simulator/encoding/vector/observation.py:289-294`; infos `Simulator/simulators/tft_simulator.py:162, 292, 347` | The real client does not show the next opponent; trackers can narrow the candidates but not pinpoint them (Upcomer, 2021) | Design choice with information exposure; `TFTConfig(hide_next_opponent=True)` removes it, see row 14. In default mode (unchanged) the obs candidate set is the eligible seats plus the real opponent, which `game_round.py:270-273` always adds (`1 not in opponent_options` tests the keys, so it is always true); that is the tracker view. Exact leaks: when nobody is eligible the set is only the real opponent, and the ghost fight names the copied seat (`game_round.py:280-284`); on main a drawn ineligible opponent can also stand out (fixed by #4). Outside the obs: `info["player"]` is the live Player, and its `possible_opponents` is already 0 for the drawn opponent (`game_round.py:274-275`); `env.unwrapped.game_round.matchups` lists every pairing | `realism-hidden-opponent` (row 14) | `hidden_opponent_test.py` | No with defaults |
 | B | 15 actions per turn, passes included | `Simulator/config.py:16`; `Simulator/simulators/tft_simulator.py:34, 194-195, 302-307`; obs scale `basic_observation.py:352`, `vector/observation.py:302` | n/a (env interface) | Not a bug: new options. `TFTConfig.pass_ends_turn` (default False) and `max_actions_per_round` now also scales the obs. Agents whose turn is over stay in the cycle with a pass-only mask and `info["turn_over"]`; no truncation | `action-budget-options` | `UnitTests/action_budget_test.py` (8 tests, incl. PettingZoo api_test / parallel_api_test) | No with defaults: 12-round parallel and AEC trajectories hash-identical to main. Yes when enabled |
 
 ## Unverifiable or needs checking
@@ -32,17 +33,25 @@ idx9 = 3-1, idx32 = 6-7, idx38 = 7-7. File:line references are to `a5718dd`.
 - 6-7 monster: which board Set 4 used at 6-7 (the sim reuses the Herald board for 6-7 and 7-7).
   Needs a Set 4 round list (patch 10.19-11.8).
 - Fortune: the payout at 0 losses (wiki says 2.5, a Set 4 loot-table guide on tacter.com says
-  none), whether the sim targets 11.2+ values (patch 11.2 changed the low-loss values), and
-  how 6 Fortune's extra orb should be modelled.
+  none; that guide now returns 404), the orb contents (row 13 uses assumptions) and the
+  10-12 loss values (separate tables since 10.23, never published). The sim targets 10.21-11.1
+  (11.2, Set 4.5, lowered 0/1 losses to 2.2/5.5).
 - Matchmaking: exact Set 4 rules for 8 and 5 or fewer alive players and for ghost fights.
-- PvE damage (below): Set 4 damage for losing to monsters.
+- PvE damage (row 10): no Set 4 page gives a separate PvE formula; the player-combat formula is
+  used. Whether a PvE loss breaks a win streak or counts for Fortune in Set 4 is not confirmed
+  (row 10 leaves streaks alone).
+- Carousel cost mix per carousel and the PvE orb tables (see the audits in "Realism options").
 
 ## Other findings, not fixed
 
-- PvE losses deal no HP damage: `game_round.py:304, 319` call `minion.minion_round` without
-  `other_rewards`, and `minion.py:283` only applies damage when it is truthy. TFT:Monster
-  wiki: "Like player combats, the Tactician will take damage if they lose the combat."
-  Likely bug; fixing it changes outcomes.
+- PvE losses deal no HP damage: moved to row 10 (`TFTConfig(pve_damage=True)`).
+- A win against a ghost pays nothing: `game_round.py` `combat_phase` only handles the ghost
+  fight's loss; `Player.won_ghost` (win gold, streak, Fortune) is never called. Probably a bug
+  (the real game counts a ghost win as a win); fixing it changes default games.
+- `composition_test.py::test_list` is flaky: it draws actions with unseeded global
+  `np.random` and plays them through an unbound context with a random seed; with fixed NumPy
+  seeds it failed 1-2 of 30 runs on `a2840a1` too. It failed in one of the full-suite runs
+  below.
 - `game_over` is `current_round > 48` (`tft_simulator.py:210`) but `game_rounds` has 44
   entries (`game_round.py:38-83`), so a game still running at idx44 would raise IndexError.
 - Buy mask is all 0 when the bench is full (`action.py:313`), even when the buy would
@@ -165,6 +174,186 @@ n survivors (n <= 5) a loss costs 2n in stage 2 under set4 and 2 + n under set18
 survivors both profiles charge 10 / 11 / 13 vs 14 / 16 in stages 3-6. Fewer survivors hurt
 more under set18, more survivors hurt more under set4; stage 8 (150) ends a set18 game.
 
+## Realism options (develop after `a2840a1`)
+
+Six opt-in `TFTConfig` fields, one branch each off `develop`, merged in this order:
+`fix-pve-damage`, `realism-carousel-pick` (two options), `realism-fortune-orbs`,
+`realism-hidden-opponent`, `rng-keyed-streams`. Every option is off by default and
+`TFTConfig()` games are identical to `a2840a1`: `UnitTests/realism_defaults_test.py` hashes two
+complete seeded random-action games (seed 11 ends at round index 34, seed 12 at 32;
+observations, rewards, terminations, truncations, infos with the Player reduced to its state,
+and every player's state after each step) against hashes recorded on `a2840a1`, once with
+`TFTConfig()` and once with every option explicitly off; `rules_profile_games_test.py` still
+matches its 12-round parallel and AEC hashes and the full Default_Agent game. None of the
+options is wired into the single-player env (`tft_single_player_simulator.py`). File:line
+references in this section are to `develop` at `158ee62`.
+
+| # | Change | File:line | Real rule and source | Classification | Branch | Test | Default trajectories |
+|---|---|---|---|---|---|---|---|
+| 10 | PvE losses cost HP: `TFTConfig(pve_damage=True)` | `Simulator/battle/minion.py:213` (`minion_round(..., pve_damage)`), `309-315` (loss path); `Simulator/game/player.py:1987` (`pve_loss`); `Simulator/game/game_round.py:375, 396`; `tft_simulator.py:56` | "Like player combats, the Tactician will take damage if they lose the combat." (wiki.leagueoflegends.com/en-us/TFT:Monster); the Sets 1-3 page says the same (leagueoflegends.fandom.com/wiki/Monster_(Teamfight_Tactics)); upstream's own `UnitTests/minion_test.py::combatTest` expects HP loss. No Set 4 page gives a separate PvE formula, so the player-combat formula is used: stage damage (10.24 table) plus damage per surviving monster (`champion.unit_damage`, 2 per unit for the first five under `set4`). A draw (time-out) costs stage damage | Bug (was "Other findings"): `game_round.py` never passed `other_rewards`, and `minion_combat` only applied damage when it was truthy. Behind an option so default games keep their hashes; recommended on. Streaks, match history and the Fortune counter are not touched by PvE results (assumption: monster rounds are streak-neutral; no Set 4 source found either way). The old `other_rewards=True` path (calls `loss_round`, so it also changes streaks) is unchanged and unused by the game | `fix-pve-damage` | `UnitTests/pve_damage_test.py` (15: fake and real fights at 1-2 .. 6-7, env stage 1 with three seeds) | No with defaults. On: two random games end at index 30 / 29 instead of 34 / 32 |
+| 11 | Carousel pick choice per seat: `TFTConfig(carousel_pickers={seat: fn})`, `env.unwrapped.set_carousel_picker(seat, fn)` | `Simulator/game/carousel.py:22-68` (`carousel`, picker call), `71` (`default_pick_index`), `80` (`carousel_options`), `89` (`_checked_pick`); `Simulator/game/game_round.py` (`carousel_pickers`, passed by both carousel calls); `tft_simulator.py:60, 154` | Players pick in carousel order and choose any remaining unit with its item; a player who does not pick gets "a random remaining unit with priority for higher-tier units" (wiki.leagueoflegends.com/en-us/TFT:Carousel) | New option (the sim took the most expensive unit for everyone). Seats without a picker keep that rule with the same RNG use | `realism-carousel-pick` | `UnitTests/carousel_pick_test.py` (17, incl. pickle/branch with pickers set and "default-like picker = no picker" over 13 rounds) | No with defaults (no picker) |
+| 12 | Carousel items: `TFTConfig(carousel_fixes=True)` | `carousel.py:42-45` (item shuffle), `175-226` (`generateHeldItems(..., set4_fifth_carousel)`) | Set 4 carousel item tables (patch 10.19 notes, teamfighttactics.leagueoflegends.com/en-us/news/game-updates/teamfight-tactics-patch-10-19-notes/; same table on TFT:Carousel): fifth carousel "50% unbuilt [random components], 25.4% full items, 3% each [full items built from one component], 0.6% Force of Nature" | Bug (fifth carousel: the 50% unbuilt case gave full items from one component, so 5-4 always offered full items instead of half the time) plus design approximation (item lists come in a fixed order and units in cost order, so e.g. at 2-4, in the 80% one-of-each case, the 1-cost always held B.F. Sword and the 3-costs Bow / Gloves / Tear / the duplicate); with the option the items are shuffled onto the units (assumption: pairing is random in the real game) | `realism-carousel-pick` | `carousel_pick_test.py::test_items_follow_cost_order_without_fixes_and_are_shuffled_with_fixes`, `::test_fifth_carousel_table` | No with defaults |
+| 13 (was 8b) | Fortune pays loot orbs: `TFTConfig(fortune_orbs=True)` | `Simulator/game/loot_orb.py:149-320` (`FORTUNE_*`, `gen_fortune_orb`, `gen_fortune_extra_orb`, `give_fortune_orb`); `Simulator/game/player.py:1911, 1939, 1967` (switches), `1974` (`fortune_orb_payout`); `player_manager.py` (flag per player); `tft_simulator.py:69` | Set 4: "Winning combat against a player will give bonus orbs. The longer you've gone without an orb, the bigger the payout"; 3: bonus orbs, 6: "extra bonus orbs with rare loot"; average value 2.5/6/10.5/17/24/31/38/45/55/70 for 0-9 losses (wiki.leagueoflegends.com/en-us/Fortune_(Teamfight_Tactics); 10.20 notes .../teamfight-tactics-patch-10-20-notes/ raised them, 10.21 notes .../teamfight-tactics-patch-10-21-notes/ set 0/1/2 losses to 2.5/6/10.5, removed 5-costs at 4 losses, 6 Fortune orb average 10.25 -> 11.65); 10.23 added separate tables for 10-12 losses (values unpublished); hidden counter "can go up to 12", the 6 Fortune orb "does not scale with loss streaks" (leagueoflegends.fandom.com/wiki/Fortune_(Teamfight_Tactics)) | Design approximation, now behind an option (default off keeps the old payout so default games do not change). With it: one orb per win from the loss table, the counter counts each loss once (the old code counts twice with 6 Fortune) and stops at 12, 6 Fortune adds the 11.65 extra orb. Contents are assumptions, see "Fortune orb contents" below; every package has the table value in expectation | `realism-fortune-orbs` | `UnitTests/fortune_orbs_test.py` (42: per-package and per-orb means for 0-12 losses, contents rules, counter, 6 Fortune, option off = old gold payout, delivery) | No with defaults. On: 11 orbs paid in 4 Default_Agent games (seeds 5-8) |
+| 14 (was 9) | Hidden next opponent: `TFTConfig(hide_next_opponent=True)` | `Simulator/game/game_round.py:319-327` (`start_round`), `331` (`has_player_combat`), `336` (`opponent_candidates`), `354` (`expose_opponent_candidates`), `408-412` (draw in `combat_round`, `last_matchups`); `tft_simulator.py:74, 301` (`info["opponent_candidates"]`) | The client does not show the next opponent; players can narrow it to the opponents not excluded by the recent-opponent rule (Upcomer, 2021; see row 9) | Information exposure, now behind an option. Pairings are drawn in `combat_round` after the last planning action. During planning `player.opponent_options` (the obs opponent slots) and `info["opponent_candidates"]` hold the candidates: alive opponents whose weight on either side is >= `MATCHMAKING_WEIGHTS` (both follow from the public matchup history), every alive opponent if that leaves none, nobody before a PvE round. The weights now advance only on player-combat rounds (default mode also draws before PvE rounds) | `realism-hidden-opponent` | `UnitTests/hidden_opponent_test.py` (9: obs/info = candidates for 22 rounds, `matchups == []` while planning, a different RNG state at the end of planning changes the pairings but not in default mode, one draw per combat round) | No with defaults |
+| 15 | Independent random streams: `TFTConfig(rng_streams="keyed")`, `env.unwrapped.reseed_rng(seed)` | `Simulator/rng.py:94` (`EnvRNG.reseed`), `143-259` (stream kinds, `LazyStreamRNG`, `KeyedStreams`); `Simulator/battle/combat_context.py:40` (`streams`), `87-93` (`reset_combat` keeps it), `119` (`rng_stream`); scopes in `player.py:283` (shop), `1688` (start of round), `1977` (Fortune), `game_round.py:107, 192-195` (fights), `241` (pairings), `374, 394` (PvE), `carousel.py:22`, `minion.py:319` (loot), `tft_simulator.py:413` (actions); `default_agent.py:31` (bot generator); `tft_simulator.py:80, 198-230` (`reset`, `reseed_rng`, `_seed_bots`) | n/a (reproducibility, common random numbers for branch comparisons) | New option. "shared" (default) is the old single stream; `rng_stream` is a no-op then | `rng-keyed-streams` | `UnitTests/rng_streams_test.py` (11: extra refresh by one seat leaves every other seat identical for rounds r..r+3, shared mode diverges, PYTHONHASHSEED 0/1/2 subprocesses, reseed of restored copies in both modes, numpy reseed, bot generators, shop odds, pickle) | No with "shared" |
+
+Row 8b and row 9 of the first table are now rows 13 and 14; the PvE-damage item of "Other
+findings" is row 10.
+
+### Using the options
+
+```python
+from Simulator.simulators.tft_simulator import TFTConfig, parallel_env
+
+def pick_cheapest(player, options):          # module level, so the env stays picklable
+    return min(range(len(options)), key=lambda i: options[i]["cost"])
+
+env = parallel_env(TFTConfig(pve_damage=True, carousel_fixes=True, fortune_orbs=True,
+                             hide_next_opponent=True, rng_streams="keyed",
+                             carousel_pickers={0: pick_cheapest}))
+env.unwrapped.set_carousel_picker("player_3", my_picker)   # or 3; None restores the default
+observations, infos = env.reset(seed=1)
+infos["player_0"]["opponent_candidates"]                   # e.g. ["player_2", "player_5", "player_6"]
+env.unwrapped.reseed_rng(np.random.SeedSequence(42))      # after restoring a pickled copy
+```
+
+- Carousel picker: `fn(player, options) -> int`. Called when that seat's turn comes, during
+  `reset()` for 1-1 (set it before `reset`) and during the `step` that plays 2-4, 3-4, ...
+  (index 6, 12, ...). `player` is the live `Player` (gold, HP, board, bench, items, `round`);
+  `options` lists the units still on the carousel in carousel order, each
+  `{"slot": 0-8, "name": str, "cost": int, "stars": 1, "item": str}`; return an index into
+  `options` (Python or NumPy int). Anything else raises `ValueError`. Pickers live in a plain
+  dict `env.unwrapped.carousel_pickers` (shared with `game_round`), are kept across `reset`, and
+  are pickled with the env, so they must be module-level functions or instances of
+  module-level classes (no lambdas or closures). Draw from your own RNG inside a picker, not
+  from the simulator's.
+- Fortune orbs: `player.fortune_orb_log` lists every payout as
+  `{"round", "losses", "orbs": [[("gold", n) | ("champion", cost) | ("component",) | ("neekos_help",) | ("spatula",)], ...]}`.
+- Hidden opponent: during planning the observation's opponent fields hold the candidate set:
+  token obs `game_scalars[2:5]` = the first three candidate seat numbers (0 if fewer),
+  `emb_scalars[4]` = bit mask over the other seven seats in seat order; vector obs
+  `opponent_options[x] / 20`. `info["opponent_candidates"]` (only present with the option) is
+  the sorted seat list, `[]` before a PvE round. `env.unwrapped.game_round.last_matchups` holds
+  the pairings just played (both modes).
+- Keyed streams and re-seeding: see "Random streams" below.
+
+### Carousel audit (Set 4, patch 10.19 table and TFT:Carousel)
+
+- Matches the sources: 9 units per carousel whatever the number of living players (leftovers
+  stay unclaimed), 1-1 is 1-costs only, every unit holds one item, pick order (row 0), the
+  first to fourth and sixth carousel item tables (65/11/11/11/1.5/0.5; 80/15/5; 50/30/15/5;
+  80/15/5; half full items, half components).
+- Fifth carousel (5-4, index 24): see row 12 (fixed with `carousel_fixes`).
+- Item-to-unit pairing follows the list order (row 12, fixed with `carousel_fixes`).
+- Not verified, unchanged: the cost mix per carousel (2-4: 1/4/4 of 1/2/3-costs; 3-4:
+  1/2/3/3 up to 4-costs; 4-4 on: 1/2/2/2/2 up to 5-costs); the wiki only says 1-1 is tier 1.
+  The seventh carousel (7-4) reuses the sixth's table (the sources list six). "Components" in
+  the half-and-half table are drawn from `basic_items`, so they can be Spatulas. The
+  "Defense components" first-carousel set is all Vest/Belt/Cloak (11.2, Set 4.5, replaced it).
+  Units come from the module-level `pool_stats` counts, so a depleted champion can still appear
+  (known since `rules-profile`). A unit nobody picks never returns to anyone.
+
+### Fortune orb contents (assumptions)
+
+Riot published only average values. The contents use the hints in the patch notes and on the
+wiki: the wiki's 5-loss example (23.5 gold before 10.20) lists "23 gold", "two tier 4 units
+and two items", "one item and 16 gold", "one Neeko's Help, one item and 8 gold", "two items
+and 8 gold", which values a component and Neeko's Help at about 7.5 gold; the Set 4.5 drops
+quoted at bunnymuffins.lol/fortune-guide-for-set-4-5/ (from a community loot table) include
+"20 gold + 5 Spatulas" at 9 losses (Spatula about 10 gold) and "5 five-costs + 14 gold + 2
+items" at 8 losses. In `loot_orb.py`:
+
+- Values: component 7.5, Neeko's Help (`champion_duplicator`) 7.5, Spatula 10, champion = its
+  cost. 10-12 losses keep the simulator's 90/115/145.
+- An orb is one package, chosen uniformly from those allowed at that loss count: all gold
+  (0-3 losses only; 10.20 removed all-gold drops "at higher levels of losses", threshold
+  unknown), champions (up to 5, cost 1/2/3/3/4/4 for 0-5 losses and 5 from 6 losses; 10.21
+  removed 5-costs at 4 losses), components (up to 6), a mix (about a third each of components,
+  champions and gold), Neeko's Help plus a component (from 15 gold), Spatulas (from 5 losses,
+  10.20; up to 5). The rest of the value is gold, paid as floor or ceil with the probability
+  that makes the expected value exactly the table value.
+- 6 Fortune extra orb (11.65 average): a 1% "Jackpot" of 6 components (10.20 mentions a very
+  rare Jackpot of "lots of items"), otherwise one of a 5-cost, a component, Neeko's Help or a
+  Spatula plus gold (no all-gold drop, 10.20), averaging 11.65 overall.
+- Delivery is the PvE-loot one: champions to the bench (their cost in gold if it is full),
+  components from the player's item pool (refilled if empty), items lost if the item bench is
+  full.
+- The counter still counts draws and only rises while Fortune is active, as before; a win
+  against a ghost pays nothing (no `won_*` call happens for ghost wins, see below).
+- The sim's roster is Set 4 (Jinx is Fortune), so the 10.21-11.1 values apply; 11.2 (Set 4.5)
+  lowered 0/1 losses to 2.2/5.5.
+
+### PvE loot audit (not changed)
+
+Sources: TFT:Monster ("At least one loot orb is guaranteed by winning a PvE round", "The
+first 3 PvE rounds always drop at least 1 orb"); 10.19 notes ("Adjusted the types of orbs and
+their contents across all stages of the game", "Completed items can no longer drop from
+orbs", "Spatula items can now drop from end game PVE rounds, but only if you have at least
+one of that trait on the board"). No Set 4 orb table or per-round orb count was found.
+
+- Stage 1 (`minion.py` FirstMinion/SecondMinion/ThirdMinion): the code's comment says 18 gold
+  of orbs (3 blue, or 2 blue and 2 gray). Enumerating the code: 18 gold 83.8%, 21 gold 7.5%,
+  15 gold 8.75% (gray 3, blue 6). Unverified either way.
+- Krugs 3 draws, Wolves and Raptors 5 draws, each orb or nothing (5% / 10% / 10% nothing), so
+  a win can drop nothing (0.0125% / 0.001% / 0.001%), against the "at least one orb" rule.
+  Minor, not changed (changes default games).
+- Orbs hold components only (the 10.19 rule holds); Nexus (5-7) and Herald (6-7, 7-7) add a
+  full item outside the orbs, drawn from `thieves_gloves_items`, so emblems ("Spatula items")
+  never drop although 10.19 says they can at end-game PvE.
+- Orb tables (gray: 3 gold / 3-cost / 2-cost + 1 / three 1-costs / duplicator + 1; blue: 6 gold
+  / two 3-costs / three 2-costs / component 60% / duplicator + 2-cost + 1; gold: 10 gold /
+  duplicator + 5 / Spatula 75%) and the 5-7 / 6-7 / 7-7 monsters: no Set 4 source found.
+
+### Hidden opponent: what is reachable while planning (option on)
+
+- Observation: only the candidate set (above). `info`: `opponent_candidates` and
+  `info["player"]`, the live `Player`: `opponent_options` (= candidates), `possible_opponents`
+  (the weights; past pairings only, no draw has happened), `opponent` (the previous
+  round's opponent as a live `Player`, i.e. that seat's full private state, in both modes),
+  `pool_obj` (the shared pool). Nothing there depends on the coming draw.
+- `env.unwrapped` (internal): `game_round.matchups` is `[]` until `combat_round` draws;
+  `game_round.last_matchups` is the previous round; `env.unwrapped.rng` / `combat_ctx` hold the
+  RNG state, so a harness that copies the env and plays the round out can learn the pairing.
+  With `rng_streams="keyed"` the pairing comes from the round's matchmaking stream, so it does
+  not depend on the planning actions at all.
+- Measured: in 8 random games the drawn opponent was outside the exposed candidate set in 122
+  of 1266 pairings (9.6%), all from the greedy matchmaker falling back to an excluded opponent
+  when a player's candidates were already paired (rows 4 and 9). With an odd number alive one
+  player fights a ghost copy of any living player, which the candidate set does not list.
+
+### Random streams
+
+With `rng_streams="keyed"` (`Simulator/rng.py`), each event draws from a stream derived from
+the episode seed: root `SeedSequence(episode_seed, spawn_key=(1,))`, child key
+`(round index, kind, ids..., use index)` with kinds shop (seat; the use index is the refresh
+index in the round, 0 = the round's free shop), action (seat; action index), start of round
+(seat), matchmaking, carousel, combat (blue seat, red seat), ghost (seat, ghost seat), PvE
+fight (seat), loot (seat), Fortune (seat); the rule bot gets one generator per seat
+(`player.default_agent.rng`) instead of global `np.random`. Anything else would draw from a
+"misc" stream; two full random games with every option on drew nothing from it. Keys are ints,
+so PYTHONHASHSEED does not matter. Only small use counters (pruned to the last two rounds) are
+stored; generators are built lazily, so the env pickles as before. The draw code is unchanged,
+so the shop odds and every other marginal distribution are too, and shops stay coupled
+through the shared pool (a purchase changes later shops; shop rolls do not take units out of
+the pool, so a refresh alone does not).
+
+Re-seeding a restored env: call `env.unwrapped.reseed_rng(seed)` with an int or a
+`np.random.SeedSequence`. Under "keyed" it replaces the root of every stream (counters such as
+refresh and action indices are kept, so two copies of one state re-seeded with the same seed
+draw identical numbers for identical events: common random numbers) and re-derives the
+per-seat bot generators; it does not touch `env.rng`, which "keyed" does not use. Under
+"shared" it re-seeds `env.rng` in place (`EnvRNG.reseed`; an int gives the state a fresh
+`reset(seed=int)` starts from). A harness that assigns `env.rng.np = ...` by hand leaves
+`env.rng.np_api` (which the simulator's NumPy draws use: loot orb choice, the auto-battler
+check) on the old generator; `EnvRNG.reseed` replaces both. Under "shared" the rule bot still
+uses global `np.random`, which the harness seeds itself.
+
+Test of the isolation (`rng_streams_test.py`): from one seed, seat 0 passes and refreshes once
+more at round 5 in one branch; the other seats take random legal actions from their own
+generators. Under "keyed" every other seat's shop, board, bench, items, gold and HP are
+identical at every step of rounds 5-8, and seat 0's own shops from round 6 on too (only its
+gold differs). Under "shared" all seven other seats diverge.
+
 ## Tests
 
 `python -m pytest UnitTests -q --continue-on-collection-errors -p no:randomly`, serially.
@@ -177,3 +366,12 @@ Results (2026-10-07): main 2 failed / 49 passed / 1 error; every fix branch and
 2 failed / 111 passed / 1 error; `rules-profile`: 2 failed / 156 passed / 1 error (the same
 known failures; 45 new tests in `rules_profile_test.py` and `rules_profile_games_test.py`, the
 latter about 5 minutes because it plays three full games).
+
+Realism branches (2026-10-07, `PYTHONHASHSEED=0`, same command): `develop` at `a2840a1`
+2 failed / 156 passed / 1 error; `fix-pve-damage` and `realism-carousel-pick` (which
+contains it) 2 failed / 192 passed / 1 error; `realism-fortune-orbs` 2 failed / 234 passed /
+1 error; `develop` after the hidden-opponent merge 3 failed / 242 passed / 1 error (the third
+is the flaky `composition_test.py::test_list`, see "Other findings"; it passes on rerun);
+`rng-keyed-streams` 2 failed / 254 passed / 1 error. Only the known failures otherwise.
+`realism_defaults_test.py` checks that a fixed-seed default game (all new options off) has
+the same trajectory hash as `a2840a1`, so default trajectories are unchanged on every branch.
