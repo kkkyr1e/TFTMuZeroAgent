@@ -14,7 +14,7 @@ _np_random = NPRandomProxy()
 
 class Game_Round:
     def __init__(self, game_players, pool_obj, step_func_obj, rules=None, pve_damage=False,
-                 carousel_pickers=None, carousel_fixes=False):
+                 carousel_pickers=None, carousel_fixes=False, hide_next_opponent=False):
         # Economy rules profile; defaults to the pool's (Set 4 when the pool has none).
         self.rules = get_rules(rules if rules is not None else getattr(pool_obj, "rules", None))
         # TFTConfig.pve_damage: losing to monsters costs HP (stage + surviving-unit damage).
@@ -24,6 +24,9 @@ class Game_Round:
         self.carousel_pickers = carousel_pickers if carousel_pickers is not None else {}
         # TFTConfig.carousel_fixes: random item-to-unit pairing and the Set 4 fifth-carousel table.
         self.carousel_fixes = carousel_fixes
+        # TFTConfig.hide_next_opponent: draw the pairings in combat_round, after planning, and
+        # during planning show each player only the candidates (opponent_candidates).
+        self.hide_next_opponent = hide_next_opponent
         # Amount of damage taken as a base per round. First number is max round, second is damage
         # Rounds 0-2 are stage 1, then each stage is 6 rounds (round 3 = 2-1, 9 = 3-1, ...).
         # Set 4: base damage per stage is 0/0/2/3/5/8/15 for stages 1-7 (patch 10.24 values).
@@ -36,6 +39,7 @@ class Game_Round:
         self.NUM_DEAD = 0
         self.current_round = 0
         self.matchups = []
+        self.last_matchups = []
 
         self.save_current_battle = {"player_" + str(player_id): False for player_id in range(config.NUM_PLAYERS)}
 
@@ -300,10 +304,47 @@ class Game_Round:
 
     def start_round(self):
         self.step_func_obj.generate_shops(self.PLAYERS)
-        self.decide_player_combat()
+        if self.hide_next_opponent:
+            # The pairings are drawn in combat_round; until then nobody knows them.
+            self.matchups = []
+            self.expose_opponent_candidates()
+        else:
+            self.decide_player_combat()
         for player in self.PLAYERS.values():
             if player:
                 player.start_round(self.current_round)
+
+    def has_player_combat(self, round_index=None):
+        """True if the round at round_index (default: the current one) has a player combat."""
+        round_index = self.current_round if round_index is None else round_index
+        return round_index < len(self.game_rounds) and self.combat_round in self.game_rounds[round_index]
+
+    def opponent_candidates(self, key):
+        """Seats `key` can expect to face in the coming round, as a player could work out.
+
+        Alive opponents that the recent-opponent rule does not exclude: either side's
+        possible_opponents weight for the other is at least MATCHMAKING_WEIGHTS (the weights
+        follow from the public matchup history). If that leaves nobody, every alive opponent
+        (matchmaking then falls back to the longest-unseen one). Empty before a round with no
+        player combat. With an odd number of players one of them fights a ghost instead.
+        """
+        if not self.has_player_combat():
+            return []
+        player = self.PLAYERS[key]
+        alive = [other for other, state in self.PLAYERS.items() if state and other != key]
+        eligible = [other for other in alive
+                    if player.possible_opponents[other] >= config.MATCHMAKING_WEIGHTS
+                    or self.PLAYERS[other].possible_opponents[key] >= config.MATCHMAKING_WEIGHTS]
+        return eligible or alive
+
+    def expose_opponent_candidates(self):
+        """hide_next_opponent: opponent_options (what the observations show) = the candidates."""
+        for key, player in self.PLAYERS.items():
+            if player:
+                candidates = self.opponent_candidates(key)
+                player.opponent_options = {"player_" + str(player_id): 0 for player_id in range(config.NUM_PLAYERS)}
+                for other in candidates:
+                    player.opponent_options[other] = 1
 
     def round_1(self):
         carousel(list(self.PLAYERS.values()), self.current_round, self.pool_obj,
@@ -348,6 +389,11 @@ class Game_Round:
                 log_to_file(player)
         log_end_turn(self.current_round)
 
+        if self.hide_next_opponent:
+            # Planning is over: draw the pairings now (start_round did not).
+            self.decide_player_combat()
+        # The pairings just played; public information, kept after start_round clears matchups.
+        self.last_matchups = [list(match) for match in self.matchups]
         self.combat_phase(self.PLAYERS, self.current_round)
 
         return False

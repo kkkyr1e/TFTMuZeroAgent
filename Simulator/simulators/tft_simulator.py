@@ -66,6 +66,11 @@ class TFTConfig:
     # counter counts each loss once and stops at 12, and 6 Fortune adds an extra orb (11.65 gold
     # on average). Off by default (old behaviour). See Simulator/game/loot_orb.py.
     fortune_orbs: bool = False
+    # If True, the next pairings are drawn at combat time, after every planning action, instead
+    # of at the start of planning. During planning the observation's opponent slots and
+    # info["opponent_candidates"] hold only the seats a player could expect to face (alive, not
+    # excluded by the recent-opponent rule). Off by default (pairings known during planning).
+    hide_next_opponent: bool = False
 
 def env(config: TFTConfig = TFTConfig()):
     """
@@ -214,7 +219,8 @@ class TFT_Simulator(AECEnv):
         self.game_round = Game_Round(self.player_manager.player_states, self.pool_obj, self.player_manager,
                                      pve_damage=self.config.pve_damage,
                                      carousel_pickers=self.carousel_pickers,
-                                     carousel_fixes=self.config.carousel_fixes)
+                                     carousel_fixes=self.config.carousel_fixes,
+                                     hide_next_opponent=self.config.hide_next_opponent)
 
         # --- TFT Starting Game State ---
         self.game_round.play_game_round()  # Does first carousel and first minion wave
@@ -233,8 +239,9 @@ class TFT_Simulator(AECEnv):
                 "turn_over": False,
             } for player_id in range(self.num_players)
         }
-        for info in self.infos.values():
+        for agent, info in self.infos.items():
             info.update(merge_seed_info({}, self))
+            info.update(self._opponent_info(agent))
 
         # --- Game State for Render ---
         if is_porosight_render(self.render_mode):
@@ -247,6 +254,16 @@ class TFT_Simulator(AECEnv):
         self._agent_selector = agent_selector(self.agents)
         self.agent_selection = self._agent_selector.next()
         self.actions_taken = {agent: 0 for agent in self.agents}
+
+    def _opponent_info(self, agent):
+        """hide_next_opponent: info["opponent_candidates"], the seats `agent` may face next."""
+        if not self.config.hide_next_opponent:
+            return {}
+        player = self.player_manager.player_states.get(agent)
+        if player is None:
+            return {"opponent_candidates": []}
+        return {"opponent_candidates": [seat for seat in self.possible_agents
+                                        if player.opponent_options.get(seat) == 1]}
 
     # -- Query Functions --
     def is_alive(self, player_id):
@@ -368,6 +385,7 @@ class TFT_Simulator(AECEnv):
             "turn_over": self.turn_over[agent],
             "save_battle": self.game_round.save_current_battle[agent]
         }
+        self.infos[agent].update(self._opponent_info(agent))
 
         self._clear_rewards()
 
@@ -416,6 +434,7 @@ class TFT_Simulator(AECEnv):
                                 "turn_over": False,
                                 "save_battle": self.game_round.save_current_battle[player_id]
                             }
+                            self.infos[player_id].update(self._opponent_info(player_id))
 
                 _live_agents = self.agents[:]
                 # Update agent_selector if agents died this round
