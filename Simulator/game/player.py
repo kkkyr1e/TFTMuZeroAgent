@@ -2,7 +2,7 @@ import math
 import time
 import numpy as np
 from Simulator.battle import champion, origin_class
-from Simulator.battle.combat_context import RandomProxy
+from Simulator.battle.combat_context import RandomProxy, rng_stream
 
 random = RandomProxy()
 import Simulator.utils as utils
@@ -15,6 +15,7 @@ from Simulator.game.pool_stats import cost_star_values
 from Simulator.game.rules import get_rules
 from Simulator.battle.origin_class_stats import tiers, fortune_returns
 from Simulator.game import loot_orb
+from Simulator.rng import STREAM_FORTUNE, STREAM_SHOP, STREAM_START
 from math import floor
 from Simulator.config import DEBUG, CHAMPION_ACTION_DIM, TIERS_FLATTEN_LENGTH, TEAM_TIERS_VECTOR, ALLOW_SPILL
 
@@ -278,7 +279,9 @@ class Player:
             bool: True if action was performed successfully, False otherwise.
         """
 
-        self.shop = self.pool_obj.sample(self, 5)
+        # Keyed RNG streams: this seat's own shop stream (one per refresh); no-op otherwise.
+        with rng_stream(STREAM_SHOP, self.player_num):
+            self.shop = self.pool_obj.sample(self, 5)
         self.shop_champions = self.create_shop_champions()
 
         return True
@@ -1681,13 +1684,15 @@ class Player:
         self.round = t_round
         self.reward += self.num_units_in_play * self.minion_count_reward
         self.gold_income(self.round)
-        if self.kayn_check():
-            self.kayn_turn_count += 1
-        if self.kayn_turn_count >= 3:
-            self.kayn_transform()
-        for x in self.thieves_gloves_loc:
-            if (x[1] != -1 and self.board[x[0]][x[1]]) or self.bench[x[0]]:
-                self.thieves_gloves(x[0], x[1])
+        # Keyed RNG streams: this seat's start-of-round stream; no-op otherwise.
+        with rng_stream(STREAM_START, self.player_num):
+            if self.kayn_check():
+                self.kayn_turn_count += 1
+            if self.kayn_turn_count >= 3:
+                self.kayn_transform()
+            for x in self.thieves_gloves_loc:
+                if (x[1] != -1 and self.board[x[0]][x[1]]) or self.bench[x[0]]:
+                    self.thieves_gloves(x[0], x[1])
 
         self.printComp()
         self.printBench()
@@ -1969,11 +1974,12 @@ class Player:
     def fortune_orb_payout(self):
         """Fortune win with TFTConfig.fortune_orbs: a loot orb worth the loss table on average
         (loot_orb.FORTUNE_ORB_VALUES) and, with 6 Fortune, the extra orb; resets the counter."""
-        orbs = [loot_orb.gen_fortune_orb(self.fortune_loss_streak)]
-        if self.team_tiers['fortune'] > 1:
-            orbs.append(loot_orb.gen_fortune_extra_orb())
-        for contents in orbs:
-            loot_orb.give_fortune_orb(self, contents)
+        with rng_stream(STREAM_FORTUNE, self.player_num):
+            orbs = [loot_orb.gen_fortune_orb(self.fortune_loss_streak)]
+            if self.team_tiers['fortune'] > 1:
+                orbs.append(loot_orb.gen_fortune_extra_orb())
+            for contents in orbs:
+                loot_orb.give_fortune_orb(self, contents)
         self.fortune_orb_log.append({"round": self.round, "losses": self.fortune_loss_streak, "orbs": orbs})
         self.print("Fortune orbs after {} losses: {}".format(self.fortune_loss_streak, orbs))
         self.fortune_loss_streak = 0

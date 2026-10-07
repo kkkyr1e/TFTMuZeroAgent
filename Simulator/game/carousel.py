@@ -2,8 +2,9 @@ import numbers
 
 from Simulator.battle.item_stats import item_builds as item_builds, basic_items, starting_items, offensive_items, defensive_items
 from Simulator.battle.champion import champion
-from Simulator.battle.combat_context import RandomProxy
+from Simulator.battle.combat_context import RandomProxy, rng_stream
 from Simulator.game.pool_stats import COST_1, COST_2, COST_3, COST_4, COST_5
+from Simulator.rng import STREAM_CAROUSEL
 
 random = RandomProxy()
 
@@ -25,6 +26,12 @@ def carousel(players, r, pool_obj, pickers=None, shuffle_items=False):
     shuffle_items (TFTConfig.carousel_fixes): hand the items to the units in random order and
     use the Set 4 fifth-carousel table (see generateHeldItems).
     """
+    # Keyed RNG streams: the round's carousel stream; no-op otherwise.
+    with rng_stream(STREAM_CAROUSEL):
+        _carousel(players, r, pool_obj, pickers, shuffle_items)
+
+
+def _carousel(players, r, pool_obj, pickers, shuffle_items):
     # probability of certain arrangements during certain carousels
     # https://leagueoflegends.fandom.com/wiki/Carousel_(Teamfight_Tactics)
     alive = carousel_order(players, r)

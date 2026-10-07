@@ -25,7 +25,8 @@ from Simulator.encoding.interface import ObservationBase, ActionBase
 from Simulator.encoding.token.basic_observation import ObservationToken
 from Simulator.encoding.token.action import ActionToken
 from gymnasium.spaces import Box, Dict
-from Simulator.battle.combat_context import bind_episode, install_episode, merge_seed_info
+from Simulator.battle.combat_context import bind_episode, install_episode, merge_seed_info, rng_stream
+from Simulator.rng import KeyedStreams, STREAM_ACTION
 
 import time
 
@@ -71,6 +72,12 @@ class TFTConfig:
     # info["opponent_candidates"] hold only the seats a player could expect to face (alive, not
     # excluded by the recent-opponent rule). Off by default (pairings known during planning).
     hide_next_opponent: bool = False
+    # Random number streams. "shared" (default): one stream per episode, as before. "keyed": each
+    # kind of event draws from its own stream derived from the episode seed and the event (round,
+    # seat, refresh / action index, matchup), so one seat's extra draw (e.g. an extra refresh)
+    # leaves every other seat's randomness unchanged. See Simulator/rng.py; re-seed a restored env
+    # with env.unwrapped.reseed_rng(seed).
+    rng_streams: str = "shared"
 
 def env(config: TFTConfig = TFTConfig()):
     """
@@ -106,6 +113,8 @@ class TFT_Simulator(AECEnv):
         self.config = config
         # Fail early on an unknown profile name
         get_rules(config.rules)
+        if config.rng_streams not in ("shared", "keyed"):
+            raise ValueError(f"rng_streams must be 'shared' or 'keyed', not {config.rng_streams!r}")
 
         # Carousel pickers per seat; Game_Round holds a reference to this dict. Plain dict of
         # the callables the caller gave, so the env pickles whenever the callables do.
@@ -188,8 +197,37 @@ class TFT_Simulator(AECEnv):
 
     def reset(self, seed=None, options=None):
         install_episode(self, seed, options)
+        if self.config.rng_streams == "keyed":
+            self.combat_ctx.streams = KeyedStreams.from_seed(self.rng.episode_seed)
+            self.combat_ctx.rng = self.combat_ctx.streams.misc
         with self.combat_ctx.bind():
             self._reset_bound()
+
+    def reseed_rng(self, seed):
+        """Re-seed every random stream of this env, e.g. a copy restored with pickle.
+
+        seed: an int or a numpy SeedSequence. "shared": the one stream is re-seeded in place
+        (an int gives the stream a fresh reset(seed=int) would start with). "keyed": every stream
+        is derived from the new root from now on (counters such as the refresh index per seat and
+        round are kept), and each seat's rule-bot generator is re-derived. The game state is not
+        touched. Two copies of a state re-seeded with the same seed then draw the same numbers
+        for the same events.
+        """
+        streams = self.combat_ctx.streams
+        if streams is None:
+            self.rng.reseed(seed)
+            self.combat_ctx.rng = self.rng
+            return
+        streams.reseed(seed)
+        self.combat_ctx.rng = streams.misc
+        self._seed_bots()
+
+    def _seed_bots(self):
+        """Keyed streams: each seat's Default_Agent draws from its own generator."""
+        streams = self.combat_ctx.streams
+        for player in self.player_manager.player_states.values():
+            if player is not None:
+                player.default_agent.rng = streams.bot_generator(player.player_num)
 
     def _reset_bound(self):
         # --- PettingZoo AECEnv Variables ---
@@ -221,6 +259,11 @@ class TFT_Simulator(AECEnv):
                                      carousel_pickers=self.carousel_pickers,
                                      carousel_fixes=self.config.carousel_fixes,
                                      hide_next_opponent=self.config.hide_next_opponent)
+
+        if self.combat_ctx.streams is not None:
+            # Keys carry the round index, read from the game round.
+            self.combat_ctx.streams.game_round = self.game_round
+            self._seed_bots()
 
         # --- TFT Starting Game State ---
         self.game_round.play_game_round()  # Does first carousel and first minion wave
@@ -366,7 +409,9 @@ class TFT_Simulator(AECEnv):
             # Perform action and update observations
             action = np.asarray(action)
             decoded = self.action_class.decode_env_action(action)
-            self.step_function.perform_action(agent, decoded)
+            # Keyed RNG streams: this seat's stream for this action; no-op otherwise.
+            with rng_stream(STREAM_ACTION, self.player_manager.player_states[agent].player_num):
+                self.step_function.perform_action(agent, decoded)
 
             self.actions_taken[agent] += 1
             if is_porosight_render(self.render_mode):

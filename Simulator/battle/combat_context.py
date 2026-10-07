@@ -36,6 +36,8 @@ def _empty_field() -> List[List[Any]]:
 @dataclass
 class CombatContext:
     rng: EnvRNG = field(default_factory=EnvRNG.from_episode_seed)
+    # KeyedStreams with TFTConfig(rng_streams="keyed"); None (one shared stream) otherwise.
+    streams: Any = None
     blue: list = field(default_factory=list)
     red: list = field(default_factory=list)
     que: list = field(default_factory=list)
@@ -83,10 +85,12 @@ class CombatContext:
     shade_helper_list: list = field(default_factory=list)
 
     def reset_combat(self) -> None:
-        """Clear fight-local state.  Leaves the episode RNG stream intact."""
+        """Clear fight-local state.  Leaves the episode RNG stream (and keyed streams) intact."""
         rng = self.rng
-        self.__dict__.update(CombatContext(rng=rng).__dict__)
+        streams = self.streams
+        self.__dict__.update(CombatContext(rng=rng, streams=streams).__dict__)
         self.rng = rng
+        self.streams = streams
 
     def attach(self, unit) -> None:
         unit.ctx = self
@@ -109,6 +113,24 @@ def get_ctx() -> CombatContext:
         ctx = CombatContext()
         _thread_fallback.ctx = ctx
     return ctx
+
+
+@contextmanager
+def rng_stream(*key) -> Iterator[None]:
+    """With keyed streams, every draw inside the block comes from the stream for
+    (current round,) + key (Simulator/rng.py, STREAM_* kinds). With one shared stream (the
+    default) this does nothing, so default games draw exactly as before."""
+    ctx = get_ctx()
+    streams = ctx.streams
+    if streams is None:
+        yield
+        return
+    previous = ctx.rng
+    ctx.rng = streams.stream(key)
+    try:
+        yield
+    finally:
+        ctx.rng = previous
 
 
 def py_random():

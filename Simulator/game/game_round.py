@@ -2,7 +2,8 @@ import Simulator.config as config
 import time
 from Simulator.battle import champion, minion
 from Simulator.battle.champion_functions import MILLIS
-from Simulator.battle.combat_context import NPRandomProxy, RandomProxy, get_ctx
+from Simulator.battle.combat_context import NPRandomProxy, RandomProxy, get_ctx, rng_stream
+from Simulator.rng import STREAM_COMBAT, STREAM_GHOST, STREAM_MATCHMAKING, STREAM_PVE
 from Simulator.game.carousel import carousel
 from Simulator.game.rules import get_rules
 from Simulator.battle.alt_autobattler import alt_auto_battle
@@ -102,88 +103,96 @@ class Game_Round:
         while player_round > self.ROUND_DAMAGE[round_index][0]:
             round_index += 1
         for match in self.matchups:
-            if not match[1] == "ghost":
-                # Assigning a battle
-                players[match[0]].opponent = players[match[1]]
-                players[match[1]].opponent = players[match[0]]
-                # Fixing the time signature to see how long battles take.
-                players[match[0]].start_time = time.time_ns()
-                players[match[1]].start_time = time.time_ns()
-                get_ctx().warlord_wins['blue'] = players[match[0]].win_streak
-                get_ctx().warlord_wins['red'] = players[match[1]].win_streak
+            # Keyed RNG streams: one stream per fight; no-op otherwise.
+            with self._match_stream(players, match):
+                if not match[1] == "ghost":
+                    # Assigning a battle
+                    players[match[0]].opponent = players[match[1]]
+                    players[match[1]].opponent = players[match[0]]
+                    # Fixing the time signature to see how long battles take.
+                    players[match[0]].start_time = time.time_ns()
+                    players[match[1]].start_time = time.time_ns()
+                    get_ctx().warlord_wins['blue'] = players[match[0]].win_streak
+                    get_ctx().warlord_wins['red'] = players[match[1]].win_streak
 
-                standard_battle = config.AUTO_BATTLER_PERCENTAGE < _np_random.rand()
-                if standard_battle:
-                    # Main simulation call
-                    index_won, damage = champion.run(champion.champion, players[match[0]], players[match[1]],
-                                                     self.ROUND_DAMAGE[round_index][1])
-                else:
-                    index_won, damage = alt_auto_battle(players[match[0]], players[match[1]],
-                                                        self.ROUND_DAMAGE[round_index][1])
+                    standard_battle = config.AUTO_BATTLER_PERCENTAGE < _np_random.rand()
+                    if standard_battle:
+                        # Main simulation call
+                        index_won, damage = champion.run(champion.champion, players[match[0]], players[match[1]],
+                                                         self.ROUND_DAMAGE[round_index][1])
+                    else:
+                        index_won, damage = alt_auto_battle(players[match[0]], players[match[1]],
+                                                            self.ROUND_DAMAGE[round_index][1])
 
-                # Draw
-                if index_won == 0:
-                    players[match[0]].loss_round(damage)
-                    players[match[0]].health -= damage
-                    players[match[1]].loss_round(damage)
-                    players[match[1]].health -= damage
-                    for player in players.values():
-                        if player != players[match[0]] and player != players[match[1]]:
-                            if player:  # Not sure if there can be a dead player here.
-                                player.spill_reward(damage / (len(players) - 2))
-                    if len(players) == 2:
-                        players[match[0]].spill_reward(damage)
-                        players[match[1]].spill_reward(damage)
+                    # Draw
+                    if index_won == 0:
+                        players[match[0]].loss_round(damage)
+                        players[match[0]].health -= damage
+                        players[match[1]].loss_round(damage)
+                        players[match[1]].health -= damage
+                        for player in players.values():
+                            if player != players[match[0]] and player != players[match[1]]:
+                                if player:  # Not sure if there can be a dead player here.
+                                    player.spill_reward(damage / (len(players) - 2))
+                        if len(players) == 2:
+                            players[match[0]].spill_reward(damage)
+                            players[match[1]].spill_reward(damage)
 
-                # Blue side won
-                if index_won == 1:
-                    players[match[0]].won_round(damage)
-                    players[match[1]].loss_round(damage)
-                    players[match[1]].health -= damage
+                    # Blue side won
+                    if index_won == 1:
+                        players[match[0]].won_round(damage)
+                        players[match[1]].loss_round(damage)
+                        players[match[1]].health -= damage
 
-                # Red side won
-                if index_won == 2:
-                    players[match[0]].loss_round(damage)
-                    players[match[0]].health -= damage
-                    players[match[1]].won_round(damage)
+                    # Red side won
+                    if index_won == 2:
+                        players[match[0]].loss_round(damage)
+                        players[match[0]].health -= damage
+                        players[match[1]].won_round(damage)
 
-                # If the battle was very close.
-                # TODO: Change to <= when running the software in non-test mode
-                if damage - self.ROUND_DAMAGE[round_index][1] < self.ROUND_DAMAGE[round_index][1] and standard_battle:
-                    self.save_current_battle["player_" + str(players[match[0]].player_num)] = True
-                    self.save_current_battle["player_" + str(players[match[1]].player_num)] = True
-                else:
-                    self.save_current_battle["player_" + str(players[match[0]].player_num)] = False
-                    self.save_current_battle["player_" + str(players[match[1]].player_num)] = False
-                players[match[0]].combat = True
-                players[match[1]].combat = True
-
-            else:
-                players[match[0]].start_time = time.time_ns()
-                players[match[0]].opponent = players[match[2]]
-                get_ctx().warlord_wins['blue'] = players[match[0]].win_streak
-                get_ctx().warlord_wins['red'] = players[match[2]].win_streak
-                if config.AUTO_BATTLER_PERCENTAGE < _np_random.rand():
-                    index_won, damage = champion.run(champion.champion, players[match[0]], players[match[2]],
-                                                     self.ROUND_DAMAGE[round_index][1])
-                else:
-                    index_won, damage = alt_auto_battle(players[match[0]], players[match[2]],
-                                                        self.ROUND_DAMAGE[round_index][1])
-                if index_won == 2 or index_won == 0:
-                    players[match[0]].health -= damage
-                    players[match[0]].loss_round(damage)
+                    # If the battle was very close.
+                    # TODO: Change to <= when running the software in non-test mode
+                    if damage - self.ROUND_DAMAGE[round_index][1] < self.ROUND_DAMAGE[round_index][1] and standard_battle:
+                        self.save_current_battle["player_" + str(players[match[0]].player_num)] = True
+                        self.save_current_battle["player_" + str(players[match[1]].player_num)] = True
+                    else:
+                        self.save_current_battle["player_" + str(players[match[0]].player_num)] = False
+                        self.save_current_battle["player_" + str(players[match[1]].player_num)] = False
                     players[match[0]].combat = True
-                    # if the alive player loses to a dead player, the dead player's reward is
-                    # given out to all other alive players
-                    alive = []
-                    for other in players.values():
-                        if other:
-                            if other.health > 0 and other is not players[match[0]]:
-                                alive.append(other)
-                    for other in alive:
-                        other.spill_reward(damage / len(alive))
+                    players[match[1]].combat = True
+
+                else:
+                    players[match[0]].start_time = time.time_ns()
+                    players[match[0]].opponent = players[match[2]]
+                    get_ctx().warlord_wins['blue'] = players[match[0]].win_streak
+                    get_ctx().warlord_wins['red'] = players[match[2]].win_streak
+                    if config.AUTO_BATTLER_PERCENTAGE < _np_random.rand():
+                        index_won, damage = champion.run(champion.champion, players[match[0]], players[match[2]],
+                                                         self.ROUND_DAMAGE[round_index][1])
+                    else:
+                        index_won, damage = alt_auto_battle(players[match[0]], players[match[2]],
+                                                            self.ROUND_DAMAGE[round_index][1])
+                    if index_won == 2 or index_won == 0:
+                        players[match[0]].health -= damage
+                        players[match[0]].loss_round(damage)
+                        players[match[0]].combat = True
+                        # if the alive player loses to a dead player, the dead player's reward is
+                        # given out to all other alive players
+                        alive = []
+                        for other in players.values():
+                            if other:
+                                if other.health > 0 and other is not players[match[0]]:
+                                    alive.append(other)
+                        for other in alive:
+                            other.spill_reward(damage / len(alive))
         log_to_file_combat()
         return True
+
+    @staticmethod
+    def _match_stream(players, match):
+        if match[1] == "ghost":
+            return rng_stream(STREAM_GHOST, players[match[0]].player_num, players[match[2]].player_num)
+        return rng_stream(STREAM_COMBAT, players[match[0]].player_num, players[match[1]].player_num)
 
     def single_combat_phase(self, players):
         """
@@ -228,6 +237,11 @@ class Game_Round:
         return index_won, damage
 
     def decide_player_combat(self):
+        # Keyed RNG streams: the round's matchmaking stream; no-op otherwise.
+        with rng_stream(STREAM_MATCHMAKING):
+            self._decide_player_combat()
+
+    def _decide_player_combat(self):
         player_list = []
         self.matchups = []
         for key, player in self.PLAYERS.items():
@@ -357,7 +371,8 @@ class Game_Round:
             if player:
                 player.gold_income(0)
         for player in self.PLAYERS.values():
-            minion.minion_round(player, 0, self.PLAYERS.values(), pve_damage=self.pve_damage)
+            with rng_stream(STREAM_PVE, player.player_num):
+                minion.minion_round(player, 0, self.PLAYERS.values(), pve_damage=self.pve_damage)
         # Income of the 1-3 planning phase, which starts right after this; start_round() is not called for it
         for player in self.PLAYERS.values():
             if player:
@@ -376,8 +391,9 @@ class Game_Round:
 
         for player in self.PLAYERS.values():
             if player:
-                minion.minion_round(player, self.current_round, self.PLAYERS.values(),
-                                    pve_damage=self.pve_damage)
+                with rng_stream(STREAM_PVE, player.player_num):
+                    minion.minion_round(player, self.current_round, self.PLAYERS.values(),
+                                        pve_damage=self.pve_damage)
         return False
 
     # r stands for round or game_round but round is a keyword so using r instead

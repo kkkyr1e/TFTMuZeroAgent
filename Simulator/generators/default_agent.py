@@ -25,6 +25,12 @@ class Default_Agent:
         self.sell_chosen = 0
         self.item_guide = np.zeros(config.ITEM_CHOICE_DIM)
         self.champ_decider_action_format = champ_decider_action_format
+        # Own generator (set per seat by the env with rng_streams="keyed"); None = global np.random.
+        self.rng = None
+
+    def _rand(self):
+        rng = getattr(self, "rng", None)
+        return float(rng.random()) if rng is not None else np.random.rand()
 
     def policy(self, player, shop, game_round, mask):
         self.current_round = game_round
@@ -388,11 +394,11 @@ class Default_Agent:
                     if tier > 0:
                         current_comp_traits.append(key)
             if current_comp_traits:
-                position = int(np.random.rand() * len(current_comp_traits))
+                position = int(self._rand() * len(current_comp_traits))
                 self.comp_number = TEAM_COMP_TRAITS.index(current_comp_traits[int(position)])
             # If not, pick a random comp
             else:
-                self.comp_number = int(np.random.rand() * len(TEAM_COMP_TRAITS))
+                self.comp_number = int(self._rand() * len(TEAM_COMP_TRAITS))
 
         # Now sell all units on bench that are not in the desired comp
         # Keeping pairs for now but they will be the first to sell if bench is full

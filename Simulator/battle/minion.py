@@ -1,6 +1,8 @@
 import Simulator.config as config
 from Simulator.battle import champion
 from Simulator.game.loot_orb import LootOrb, gen_loot, gen_orb_reward, gen_orbs, give_loot
+from Simulator.battle.combat_context import rng_stream
+from Simulator.rng import STREAM_LOOT
 
 
 # TODO
@@ -313,9 +315,11 @@ def minion_combat(player, enemy, round, others=None, other_rewards=True, pve_dam
             p.spill_reward(damage / len(alive))
     # player wins!
     if index_won == 1:
-        loot = enemy.drop_loot(player.orb_history)
-        for reward in loot:
-            give_loot(player, reward)
+        # Keyed RNG streams: the seat's loot stream; no-op otherwise.
+        with rng_stream(STREAM_LOOT, player.player_num):
+            loot = enemy.drop_loot(player.orb_history)
+            for reward in loot:
+                give_loot(player, reward)
 
     if index_won == 0 or index_won == 2:
         return False
