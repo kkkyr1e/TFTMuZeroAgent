@@ -1950,6 +1950,17 @@ class Player:
                 if self.team_tiers['fortune'] > 1:
                     self.fortune_loss_streak += 1
 
+    def pve_loss(self, damage):
+        """HP and reward for losing (or timing out) a fight against monsters (TFTConfig.pve_damage).
+
+        Unlike loss_round this leaves win/loss streaks, match history and the Fortune counter
+        alone: monster rounds are treated as neutral for streaks.
+        """
+        self.health -= damage
+        self.reward -= self.damage_reward * damage
+        self.print(str(-self.damage_reward * damage) + " reward and " + str(damage) +
+                   " damage for losing to monsters")
+
     def __eq__(self, other):
         for x in range(len(self.board)):
             for y in range(len(self.board[0])):

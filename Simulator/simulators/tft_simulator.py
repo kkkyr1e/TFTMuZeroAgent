@@ -49,6 +49,9 @@ class TFTConfig:
     # economy changes (shop odds, pool copies, XP table, income, streaks, player damage);
     # champions, traits, items and combat stay Set 4.
     rules: str = "set4"
+    # If True, losing (or timing out) a PvE round costs HP like a player combat: stage damage plus
+    # damage per surviving monster. Streaks are not affected. Off by default (old behaviour: no damage).
+    pve_damage: bool = False
 
 def env(config: TFTConfig = TFTConfig()):
     """
@@ -168,7 +171,8 @@ class TFT_Simulator(AECEnv):
         self.step_function = Step_Function(self.player_manager)
 
         # --- TFT Game Round Related Variables ---
-        self.game_round = Game_Round(self.player_manager.player_states, self.pool_obj, self.player_manager)
+        self.game_round = Game_Round(self.player_manager.player_states, self.pool_obj, self.player_manager,
+                                     pve_damage=self.config.pve_damage)
 
         # --- TFT Starting Game State ---
         self.game_round.play_game_round()  # Does first carousel and first minion wave

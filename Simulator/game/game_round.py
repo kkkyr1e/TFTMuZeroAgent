@@ -13,9 +13,11 @@ _np_random = NPRandomProxy()
 
 
 class Game_Round:
-    def __init__(self, game_players, pool_obj, step_func_obj, rules=None):
+    def __init__(self, game_players, pool_obj, step_func_obj, rules=None, pve_damage=False):
         # Economy rules profile; defaults to the pool's (Set 4 when the pool has none).
         self.rules = get_rules(rules if rules is not None else getattr(pool_obj, "rules", None))
+        # TFTConfig.pve_damage: losing to monsters costs HP (stage + surviving-unit damage).
+        self.pve_damage = pve_damage
         # Amount of damage taken as a base per round. First number is max round, second is damage
         # Rounds 0-2 are stage 1, then each stage is 6 rounds (round 3 = 2-1, 9 = 3-1, ...).
         # Set 4: base damage per stage is 0/0/2/3/5/8/15 for stages 1-7 (patch 10.24 values).
@@ -307,7 +309,7 @@ class Game_Round:
             if player:
                 player.gold_income(0)
         for player in self.PLAYERS.values():
-            minion.minion_round(player, 0, self.PLAYERS.values())
+            minion.minion_round(player, 0, self.PLAYERS.values(), pve_damage=self.pve_damage)
         # Income of the 1-3 planning phase, which starts right after this; start_round() is not called for it
         for player in self.PLAYERS.values():
             if player:
@@ -326,7 +328,8 @@ class Game_Round:
 
         for player in self.PLAYERS.values():
             if player:
-                minion.minion_round(player, self.current_round, self.PLAYERS.values())
+                minion.minion_round(player, self.current_round, self.PLAYERS.values(),
+                                    pve_damage=self.pve_damage)
         return False
 
     # r stands for round or game_round but round is a keyword so using r instead
