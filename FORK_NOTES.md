@@ -3,7 +3,7 @@
 Fixes and options on top of upstream `main` at `a5718dd` (silverlight6/TFTMuZeroAgent).
 Each bug fix is its own branch off `a5718dd` with one unit test and can go upstream as a
 standalone PR. `develop` merges all of them plus `action-budget-options`. This file exists
-only on `develop`.
+only on `develop` and on `rules-profile` (branched from `develop` at `9149656`).
 
 Round indices: idx0 = 1-1 carousel + 1-2 PvE, idx1 = 1-3, idx2 = 1-4, then six indices per
 stage from idx3 = 2-1 (x-1 .. x-7, with the x-4 carousel folded into x-5). So idx8 = 2-7,
@@ -55,6 +55,116 @@ idx9 = 3-1, idx32 = 6-7, idx38 = 7-7. File:line references are to `a5718dd`.
   (`tft_single_player_simulator.py:44, 52, 159`).
 - The greedy pairing order still produces about 2.6% repeat opponents after #4.
 
+## Rules profiles (branch `rules-profile`)
+
+`TFTConfig(rules="set4" | "set18")`, default `"set4"`. A profile
+(`Simulator/game/rules.py`, `RulesProfile`) holds every economy number; champions, traits,
+items, Chosen and combat stay Set 4 in both. The env passes the profile to the shared `pool`
+(`pool(rules=...)`), and `Player` and both `Game_Round` classes read it from the pool, so
+objects built without one (unit tests, the position/item simulators, battle generators) keep
+Set 4. The single-player env honours `rules` too.
+
+Routed through the profile: shop odds per level (`pool.sample`), Chosen cost odds per level,
+copies per champion (`pool.reset`, `pool.update_pool` cap), XP table and max level, passive
+XP, Buy XP gold and XP, refresh cost, passive gold, interest, streak gold, PvP win gold
+(`Player`), base player damage per stage (`game_round.py`, `single_player_game_round.py`,
+`minion.py`) and damage per surviving unit (`champion.unit_damage`, used by `champion.run`).
+`"set4"` uses exactly the old values (the same shop and Chosen odds objects); with default
+settings a seed gives the same game as `develop` at `9149656`
+(`UnitTests/rules_profile_games_test.py` compares 12-round parallel and AEC random
+trajectories and a full Default_Agent game with hashes recorded on `develop`).
+
+Set 18 is "Enchanted Wilds" (patch 18.1 notes published 2026-08-25, live 2026-08-26); values
+are as of patch 18.4 (notes 2026-10-06). 18.1 changed no economy numbers, 18.2 changed XP, 18.3
+and 18.4 changed none (18.4 only shortened combat arrival/departure by 1 s each). Patch notes
+for 17.2-17.8 have no economy changes; 17.1 changed level 7 odds. Earlier values come from the
+patch that last changed them, checked against the LoL wiki and Set 18 tables on third-party
+sites. Percentages are cost 1/2/3/4/5.
+
+| Rule | Set 4 (`set4`) | Set 18 (`set18`) | Source for the Set 18 value | Confidence |
+|---|---|---|---|---|
+| Shop odds L1-L5 | L1-2 100; L3 75/25; L4 55/30/15; L5 45/32.5/20/2.5/0 | L1-2 100; L3 75/25; L4 55/30/15; L5 45/33/20/2/0 | wiki.leagueoflegends.com/en-us/TFT:Champion; same on seemeta.com/en/tft/set-18/odds, tftsense.gg, esportstales.com, tftflow.com, noxutft.com | wiki |
+| Shop odds L6 | 25/40/30/5/0 | 30/40/25/5/0 | Patch 13.23 notes "Level 6: 25/40/30/5/0% ⇒ 30/40/25/5/0%" (teamfighttactics.leagueoflegends.com/en-us/news/game-updates/teamfight-tactics-patch-13-23-notes/); wiki agrees | official |
+| Shop odds L7 | 20/30/35/14/1 | 19/30/40/10/1 | Patch 17.1 notes "Level 7: 16/30/43/10/1% ⇒ 19/30/40/10/1%" (…/teamfighttactics-patch-17-1/), undoing 16.4 "19/30/40/10/1% ⇒ 16/30/43/10/1%" (…/teamfighttactics-patch-16-4/); no later change in 17.2-18.4. Wiki, seemeta, tftsense agree. **Conflict:** esportstales, tftflow, noxutft and tft.ninja list 16/30/43/10/1, the value 17.1 reverted | official (flagged) |
+| Shop odds L8 | 15/20/35/25/5 | 15/20/32/30/3 | Patch 16.1 notes "Level 8: 17/24/32/24/3% ⇒ 15/20/32/30/3%" (…/teamfighttactics-patch-16-1/); wiki and third-party agree | official |
+| Shop odds L9 | 10/15/30/30/15 | 10/17/25/33/15 | Patch 16.1 notes "Level 9: 12/18/25/33/12% ⇒ 10/17/25/33/15%"; wiki and third-party agree | official |
+| Shop odds L10 | row 5/10/20/40/25 present, unreachable | 5/10/20/40/25 | Patch 13.23 notes "Level 10: 5/10/20/40/25 (No change)"; no later change found; wiki TFT:Champion and all third-party tables agree | official |
+| Shop odds L11 | row 1/2/12/50/35 present, unreachable | 1/2/12/50/35, stored but unreachable (max level 10) | wiki TFT:Champion ("Level 11 ... is a combination of Level Up and High End Shopping Augments") | wiki |
+| Max level | 9 | 10 | wiki.leagueoflegends.com/en-us/TFT:Experience; 16.1 and 18.2 notes change "XP to 10" | official |
+| XP to next level, 1→2 … 9→10 | 2/2/6/10/20/36/56/80/- (212 to level 9) | 2/2/6/10/20/36/56/68/68 (268 to level 10) | Patch 18.2 notes "Level 7 to Level 8: 60 ⇒ 56", "Level 8 to Level 9: 68 ⇒ 64", "Level 9 to Level 10: 68 ⇒ 64", and 18.2 mid-patch update (Sep 14) "XP From Level 8-9: 64 ⇒ 68", "XP From Level 9-10: 64 ⇒ 68" (teamfighttactics.leagueoflegends.com/en-sg/news/game-updates/teamfight-tactics-patch-18-2); 1→7 unchanged since 14.15 notes "2/2/6/10/20/36/…" (…/teamfighttactics-patch-14-15-notes/). tftips.app (Set 18) agrees. **Conflict:** the brief said only 9→10 was reverted; the notes revert both 8→9 and 9→10. Wiki and noxutft still show 60 for 7→8 (before 18.2) | official (flagged) |
+| Passive XP | 2 per round from 1-2 | same | wiki TFT:Experience ("You gain 2 Experience for free at the end of each round") | wiki |
+| Buy XP | 4 gold → 4 XP | same | wiki TFT:Experience; noxutft | wiki |
+| Shop refresh | 2 gold | 2 gold | No change in any 16.x-18.x notes read; no explicit Set 18 statement found | guess (unchanged) |
+| Copies per champion, cost 1-5 | 29/22/18/12/10 (the left side of 13.23's "1-cost copies: 29 ⇒ 22" etc.) | 30/25/18/10/9 | Patch 14.15 notes "1-costs: 22 ⇒ 30", "2-costs: 20 ⇒ 25", "3-costs: 17 ⇒ 18", 4-costs 10, 5-costs 9; no later change found; wiki and every Set 18 table agree | official |
+| Roster | 13/13/13/11/8 champions per cost | Set 4 roster kept (Set 18 has 14/13/14/14/10), so the pool holds 390/325/234/110/72 units instead of Set 18's 420/325/252/140/90 | by design | - |
+| Passive gold 1-2 / 1-3 / 1-4 / 2-1 | 2/2/3/4 | 2/2/3/4 | wiki.leagueoflegends.com/en-us/TFT:Gold; noxutft (Set 18) | wiki |
+| Passive gold from 2-2 | 5 | 5 | same | wiki |
+| Interest | 1 per 10 gold held before income, max 5 | same | same | wiki |
+| Streak gold (length: gold) | 2-3: 1, 4: 2, 5+: 3 (V10.8) | 2-4: 1, 5: 2, 6+: 3 | Patch 14.1 notes "1g: 2 - 3 ⇒ 3 - 4", "2g: 4 ⇒ 5", "3g: 5 ⇒ 6" (…/teamfighttactics-patch-14-1-notes/) and 14.8 notes "A streak of 2 wins or losses in a row now grants 1 gold" (…/teamfighttactics-patch-14-8-notes/); tftips.app and noxutft (Set 18) agree. **Conflict:** wiki TFT:Gold still lists 3-4: 1 (it misses 14.8) | official (flagged) |
+| PvP win gold | 1 | 1 | wiki TFT:Gold | wiki |
+| Base player damage, stages 1..8 | 0/0/2/3/5/8/15/15 (10.24) | 0/2/6/7/10/12/17/150 | 14.8 notes "0/0/3/5/7/9/15/150 ⇒ 0/2/5/7/9/11/17/150"; 14.9 notes "0/2/5/7/9/11/17/150 ⇒ 0/2/5/8/10/12/17/150" (…/teamfighttactics-patch-14-9-notes/); 16.1 notes "Stage 3 Base Damage: 5 ⇒ 6", "Stage 4 Base Damage: 8 ⇒ 7"; tftips.app, tftflow, lolchess (Set 18) agree. **Conflict:** op.gg and tft.ninja show 0/2/5/8/10/12/17 (before 16.1); the brief's 2/5/7/10/12/17 matches no single patch | official (flagged) |
+| Damage per surviving enemy unit | 0/2/4/6/8/10/11/12/... (2 each for the first 5, then 1) | 1 each | 14.8 notes "Surviving Enemies Damage: 2/2/2/1/1/etc ⇒ 1/1/1/1/1/etc" | official |
+| PvE rounds | 1-2, 1-3, 1-4, x-7 every stage | same, not routed | 18.1 notes ("You still shouldn't miss loot at Stage 4-7"); stage layout on tft.ninja/guides/game-mechanics/stages | official / third-party |
+| Carousel at 1-1 and x-4 | yes | same, not routed | 18.1 notes ("The Carousel has returned!") | official |
+| Sell value | full cost at 1-star or 1-cost, otherwise 1 less | same, not routed | wiki TFT:Champion | wiki |
+| Chosen cost odds at levels 10-11 | n/a | repeat level 9 (60% 4-cost, 40% 5-cost) | Chosen is Set 4 only, Set 4 had no level 10 | guess |
+
+Set 4 column: the values the simulator already used. Stage damage (10.24), streak gold (V10.8)
+and passive gold (wiki TFT:Gold) were checked earlier; the shop odds, XP table and pool sizes
+are not re-verified here.
+
+Data Dragon lead: Riot's developer docs (developer.riotgames.com/docs/tft) list the TFT Data
+Dragon files as tft-arena, tft-augments, tft-champion, tft-item, tft-queues, tft-regalia,
+tft-tactician and tft-trait; none has shop odds. The noxelisdev/TFT_DDragon mirror's `data/`
+folder could not be listed from here (GitHub API access to that repo is not enabled, tree
+pages are blocked by robots.txt), so no odds were taken from it. Its README labels 18.1 as
+"Set 17 (Enchanted Wilds)" and gives a Set 18 date of August 12th; the patch notes say
+Set 18 and August 25.
+
+Levels 10 and 11: Set 18 reaches level 10 with XP (max_level 10, board cap 10 units). Set 18
+also has five cost tiers, so the level 10 odds apply unchanged to the Set 4 roster's five
+tiers. Level 11 only comes from augments, which are not modelled; its odds row is stored but
+nothing reaches it. Chosen (Set 4) has no odds for level 10, so levels 10-11 reuse level 9's.
+The token observation's `assert level < 10` is now `level <= player.max_level`;
+`level / 10` scalars reach 1.0 at level 10.
+
+Out of scope (Set 18 mechanics with no Set 4 content to hang them on): Wisps (every other
+shop, seven categories, bought with gold, 18.2/18.3 Wisp price changes), augments (including
+economy augments and level 11), Opening Encounters (Reroll Subscription etc.), artifacts and
+emblems, 4-star units, unit roles and their mana rules, the Set 18 roster, traits and items,
+the Set 18 carousel contents ("more champions and/or champions with higher costs"), PvE loot
+overflow from 4-7, Set 18 PvE monsters and loot tables (the Set 4 loot orbs are kept), the
+18.3 targeting revert and the 18.4 combat arrival/departure times, Double Up and Hyper Roll
+values. PvE losses still deal no HP damage under either profile (see "Other findings").
+
+Other findings while doing this, not changed: the carousel (`carousel.py`) and loot orbs
+(`loot_orb.give_champion`) read the module-level `pool_stats.COST_*` dicts, not the live
+pool, so they ignore pool depletion and the profile's copy counts; the token observation
+asserts `game_round < 40`, so a game still alive at 8-2 (idx 40) would stop with an
+AssertionError (not hit in the games run here; stage 8 deals 150 damage per loss under
+`set18`).
+
+Game pace with Default_Agent in all 8 seats (6 seeds per profile, 11-16; means over the
+living players at the start of each stage, after income). The bot is tuned to Set 4: it buys
+XP only below level 8 with 54+ gold and rolls at level 8, so it never uses levels 9-10 and
+levels the same under both profiles; the differences come from streak gold, damage, pool
+sizes and shop odds.
+
+| Stage start | set4 gold / level / HP / alive | set18 gold / level / HP / alive |
+|---|---|---|
+| 2-1 | 7.4 / 3.00 / 100 / 8 | 7.5 / 3.00 / 100 / 8 |
+| 3-1 | 47.3 / 5.00 / 86.1 / 8 | 45.8 / 5.00 / 88.1 / 8 |
+| 4-1 | 68.4 / 6.77 / 60.3 / 8 | 69.5 / 6.71 / 63.5 / 8 |
+| 5-1 | 70.8 / 8.00 / 39.5 / 6.3 | 69.9 / 8.00 / 41.5 / 7.0 |
+| 6-1 | 66.7 / 8.00 / 31.2 / 2.8 | 51.2 / 8.00 / 26.7 / 3.5 |
+| 7-1 | no game reached it | 68.0 / 8.00 / 8.5 / 2 (1 game) |
+
+Last round played (round index): set4 30/29/27/28/27/29 (mean 28.3, about 6-2); set18
+28/30/33/31/29/28 (mean 29.8, about 6-3). Set 18 moves damage from units to the stage: with
+n survivors (n <= 5) a loss costs 2n in stage 2 under set4 and 2 + n under set18, and with 4
+survivors both profiles charge 10 / 11 / 13 vs 14 / 16 in stages 3-6. Fewer survivors hurt
+more under set18, more survivors hurt more under set4; stage 8 (150) ends a set18 game.
+
 ## Tests
 
 `python -m pytest UnitTests -q --continue-on-collection-errors -p no:randomly`, serially.
@@ -64,4 +174,6 @@ and a collection error in `env_stats_test.py` (`env_stats_lib` not importable).
 
 Results (2026-10-07): main 2 failed / 49 passed / 1 error; every fix branch and
 `action-budget-options` show only those same failures; `develop` (before this file):
-2 failed / 111 passed / 1 error.
+2 failed / 111 passed / 1 error; `rules-profile`: 2 failed / 156 passed / 1 error (the same
+known failures; 45 new tests in `rules_profile_test.py` and `rules_profile_games_test.py`, the
+latter about 5 minutes because it plays three full games).
