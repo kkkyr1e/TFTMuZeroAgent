@@ -1,3 +1,5 @@
+import numbers
+
 from Simulator.battle.item_stats import item_builds as item_builds, basic_items, starting_items, offensive_items, defensive_items
 from Simulator.battle.champion import champion
 from Simulator.battle.combat_context import RandomProxy
@@ -5,37 +7,83 @@ from Simulator.game.pool_stats import COST_1, COST_2, COST_3, COST_4, COST_5
 
 random = RandomProxy()
 
-# TODO:
-# Choose the best champion + item combo for each player
+# A carousel picker is a callable fn(player, options) -> index. `options` is the list of
+# units still on the carousel when that player's turn comes, each a dict
+#   {"slot": position 0-8 on this carousel, "name": str, "cost": int, "stars": int,
+#    "item": str or None}
+# and the return value is an index into that list. Seats without a picker take the most
+# expensive unit (the first one in carousel order among equal costs), as before.
+# TFT_Simulator stores pickers per seat ("player_0" ...): TFTConfig.carousel_pickers or
+# env.unwrapped.set_carousel_picker(seat, fn). A picker must be picklable (a module-level
+# function or an instance of a module-level class) if the env is pickled.
 
-def carousel(players, r, pool_obj):
+
+def carousel(players, r, pool_obj, pickers=None, shuffle_items=False):
+    """Run the carousel at round index r.
+
+    pickers: optional {"player_<n>": fn(player, options) -> index}; see the note above.
+    shuffle_items (TFTConfig.carousel_fixes): hand the items to the units in random order and
+    use the Set 4 fifth-carousel table (see generateHeldItems).
+    """
     # probability of certain arrangements during certain carousels
     # https://leagueoflegends.fandom.com/wiki/Carousel_(Teamfight_Tactics)
     alive = carousel_order(players, r)
 
     champions = generateChampions(r, pool_obj)
-    items = generateHeldItems(r)
+    items = generateHeldItems(r, set4_fifth_carousel=shuffle_items)
+    if shuffle_items:
+        # The item lists come in a fixed order (e.g. one of each component in item order) and
+        # the units in cost order, so without a shuffle the same cost tier always holds the
+        # same items.
+        random.shuffle(items)
 
     # give all champions on the carousel an item
     for i, champ in enumerate(champions):
         champ.add_item(items[i])
-
-    # player will choose the highest cost available regardless of item
-    # needs to be changed to choose the "best" choice for each player
+    slots = list(range(len(champions)))
 
     # alive is in pick order
     for player in alive:
         if not champions:
             break
-        current = champions[0]
-        for champ in champions:
-            if champ.cost > current.cost:
-                current = champ
+        picker = pickers.get("player_" + str(player.player_num)) if pickers else None
+        if picker is None:
+            # No picker: the highest cost available regardless of item
+            index = default_pick_index(champions)
+        else:
+            index = _checked_pick(picker(player, carousel_options(champions, slots)), len(champions))
+        current = champions[index]
         player.add_to_bench(current, from_carousel=True)
         champions.remove(current)
+        slots.pop(index)
         # pool updating should be handled upon a player choosing a champion
         # much easier this way
         pool_obj.update_pool(current, -1)
+
+
+def default_pick_index(champions):
+    """Index of the most expensive unit; the first one in carousel order among equal costs."""
+    best = 0
+    for i, champ in enumerate(champions):
+        if champ.cost > champions[best].cost:
+            best = i
+    return best
+
+
+def carousel_options(champions, slots=None):
+    """What a picker sees: one dict per unit still on the carousel, in carousel order."""
+    if slots is None:
+        slots = range(len(champions))
+    return [{"slot": slot, "name": champ.name, "cost": champ.cost, "stars": champ.stars,
+             "item": champ.items[0] if champ.items else None}
+            for slot, champ in zip(slots, champions)]
+
+
+def _checked_pick(index, count):
+    if isinstance(index, bool) or not isinstance(index, numbers.Integral) or not 0 <= index < count:
+        raise ValueError(f"carousel picker returned {index!r}; expected an int in [0, {count})")
+    return int(index)
+
 
 def carousel_order(players, r):
     """Pick order for the carousel at round index r: every living player, first pick first.
@@ -117,7 +165,13 @@ def generateChampions(r, pool_obj):
 
 # handles the item generation based on the current round
 # also chooses what kind of item set to generate (e.g. offensive components only, defensive, utility, etc.)
-def generateHeldItems(r):
+def generateHeldItems(r, set4_fifth_carousel=False):
+    """Item set for the carousel at round index r (Set 4 table, patch 10.19 notes).
+
+    set4_fifth_carousel: draw the fifth carousel's 50% "all random unbuilt components" case as
+    random components. Without it that case gives the full items built from one component,
+    as the 3%-each cases do (kept as the default so default games do not change).
+    """
     roll = random.random()
     if r == 0:
         if roll < 0.65:
@@ -157,6 +211,8 @@ def generateHeldItems(r):
             return generateThreeSpatsRandComponents()
     elif r == 24:
         if roll < 0.50:
+            if set4_fifth_carousel:
+                return generateAllRandomComponents()
             return generateComponentItems(starting_items[random.randint(0, len(starting_items) - 1)])
         elif roll < 0.754:
             return generateFullItems()

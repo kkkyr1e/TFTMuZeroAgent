@@ -1,5 +1,6 @@
 import functools
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 
@@ -52,6 +53,14 @@ class TFTConfig:
     # If True, losing (or timing out) a PvE round costs HP like a player combat: stage damage plus
     # damage per surviving monster. Streaks are not affected. Off by default (old behaviour: no damage).
     pve_damage: bool = False
+    # Carousel pick per seat: {"player_<n>" or n: fn(player, options) -> index}, see
+    # Simulator/game/carousel.py. Seats without a picker take the most expensive unit (as before).
+    # Can also be set with env.unwrapped.set_carousel_picker(seat, fn).
+    carousel_pickers: Optional[dict] = None
+    # If True, carousel items are handed to the units in random order (otherwise the same cost
+    # tier always holds the same items) and the fifth carousel (5-4) uses the Set 4 table
+    # (50% random components instead of full items).
+    carousel_fixes: bool = False
 
 def env(config: TFTConfig = TFTConfig()):
     """
@@ -88,6 +97,12 @@ class TFT_Simulator(AECEnv):
         # Fail early on an unknown profile name
         get_rules(config.rules)
 
+        # Carousel pickers per seat; Game_Round holds a reference to this dict. Plain dict of
+        # the callables the caller gave, so the env pickles whenever the callables do.
+        self.carousel_pickers = {}
+        for seat, picker in (config.carousel_pickers or {}).items():
+            self.set_carousel_picker(seat, picker)
+
         self.render_mode = config.render_mode
         self.render_path = config.render_path
 
@@ -116,6 +131,26 @@ class TFT_Simulator(AECEnv):
     @functools.lru_cache(maxsize=None)
     def action_space(self, agent):
         return self._action_space
+
+    def set_carousel_picker(self, seat, picker):
+        """Choose how `seat` picks on the carousel; picker=None restores the default.
+
+        seat: "player_<n>" or n. picker: fn(player, options) -> index into options, called when
+        that seat's turn comes (Simulator/game/carousel.py describes the options). Takes effect
+        from the next carousel, including the 1-1 carousel played inside reset() when set
+        before reset. Kept across resets. Pickling the env pickles the picker, so use a
+        module-level function or an instance of a module-level class, not a lambda or closure.
+        """
+        if isinstance(seat, int) and not isinstance(seat, bool):
+            seat = "player_" + str(seat)
+        if seat not in self.possible_agents:
+            raise ValueError(f"unknown seat {seat!r}; expected one of {self.possible_agents}")
+        if picker is None:
+            self.carousel_pickers.pop(seat, None)
+        elif not callable(picker):
+            raise TypeError(f"carousel picker for {seat} is not callable: {picker!r}")
+        else:
+            self.carousel_pickers[seat] = picker
 
     def render(self):
         if is_porosight_render(self.render_mode):
@@ -172,7 +207,9 @@ class TFT_Simulator(AECEnv):
 
         # --- TFT Game Round Related Variables ---
         self.game_round = Game_Round(self.player_manager.player_states, self.pool_obj, self.player_manager,
-                                     pve_damage=self.config.pve_damage)
+                                     pve_damage=self.config.pve_damage,
+                                     carousel_pickers=self.carousel_pickers,
+                                     carousel_fixes=self.config.carousel_fixes)
 
         # --- TFT Starting Game State ---
         self.game_round.play_game_round()  # Does first carousel and first minion wave
