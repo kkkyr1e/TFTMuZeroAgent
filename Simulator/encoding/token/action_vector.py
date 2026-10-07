@@ -122,3 +122,10 @@ class ActionVector(ActionToken):
         mask[LEVEL_INDEX] = int(self.exp_mask)
         mask[REFRESH_INDEX] = int(self.refresh_mask)
         return mask
+
+    @staticmethod
+    def pass_only_mask():
+        """Mask in the layout of fetch_action_mask() with only the pass action legal."""
+        mask = np.zeros(ACTION_DIM, dtype=np.int8)
+        mask[PASS_INDEX] = 1
+        return mask

@@ -166,6 +166,13 @@ class ActionToken(ActionBase, ActionVectorBase):
         
         return action_mask
 
+    @staticmethod
+    def pass_only_mask():
+        """Mask in the layout of fetch_action_mask() with only the pass action legal."""
+        action_mask = np.zeros((55, 38), dtype=np.float32)
+        action_mask[52, 0] = 1
+        return action_mask
+
     def update_action_mask(self, action):
         action_type, x1, x2 = action
         

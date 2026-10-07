@@ -299,7 +299,7 @@ class ObservationVector(ObservationBase, ObservationUpdateBase):
             player.round / 30,
             exp_to_level,
             max(player.win_streak, player.loss_streak) / 30,
-            player.actions_remaining / config.ACTIONS_PER_TURN
+            player.actions_remaining / player.actions_per_round
         ])
 
         return np.concatenate([return_array, match_history, opponent_options], axis=-1)

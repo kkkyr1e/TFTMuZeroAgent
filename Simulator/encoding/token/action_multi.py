@@ -139,3 +139,12 @@ class ActionMultiDiscrete(ActionToken):
         mask[BENCH_SLICE.start + 1:BENCH_SLICE.stop] = bench_to_board.any(axis=1)
         mask[ITEM_SLICE.start + 1:ITEM_SLICE.stop] = item_to_board.any(axis=1)
         return mask
+
+    @staticmethod
+    def pass_only_mask():
+        """Mask in the layout of fetch_action_mask() with only pass (or all-skip, which is a pass) legal."""
+        mask = np.zeros(MASK_DIM, dtype=np.int8)
+        for part in (PASS_SLICE, LEVEL_SLICE, REFRESH_SLICE, SHOP_SLICE, BOARD_SLICE, BENCH_SLICE, ITEM_SLICE):
+            mask[part.start] = 1
+        mask[PASS_SLICE.start + 1] = 1
+        return mask
