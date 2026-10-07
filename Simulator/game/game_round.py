@@ -13,11 +13,17 @@ _np_random = NPRandomProxy()
 
 
 class Game_Round:
-    def __init__(self, game_players, pool_obj, step_func_obj, rules=None, pve_damage=False):
+    def __init__(self, game_players, pool_obj, step_func_obj, rules=None, pve_damage=False,
+                 carousel_pickers=None, carousel_fixes=False):
         # Economy rules profile; defaults to the pool's (Set 4 when the pool has none).
         self.rules = get_rules(rules if rules is not None else getattr(pool_obj, "rules", None))
         # TFTConfig.pve_damage: losing to monsters costs HP (stage + surviving-unit damage).
         self.pve_damage = pve_damage
+        # {"player_<n>": fn(player, options) -> index} (carousel.py). TFT_Simulator passes its own
+        # dict, so env.unwrapped.set_carousel_picker() also reaches a running game.
+        self.carousel_pickers = carousel_pickers if carousel_pickers is not None else {}
+        # TFTConfig.carousel_fixes: random item-to-unit pairing and the Set 4 fifth-carousel table.
+        self.carousel_fixes = carousel_fixes
         # Amount of damage taken as a base per round. First number is max round, second is damage
         # Rounds 0-2 are stage 1, then each stage is 6 rounds (round 3 = 2-1, 9 = 3-1, ...).
         # Set 4: base damage per stage is 0/0/2/3/5/8/15 for stages 1-7 (patch 10.24 values).
@@ -300,7 +306,8 @@ class Game_Round:
                 player.start_round(self.current_round)
 
     def round_1(self):
-        carousel(list(self.PLAYERS.values()), self.current_round, self.pool_obj)
+        carousel(list(self.PLAYERS.values()), self.current_round, self.pool_obj,
+                 pickers=self.carousel_pickers, shuffle_items=self.carousel_fixes)
         for player in self.PLAYERS.values():
             log_to_file(player)
 
@@ -347,7 +354,8 @@ class Game_Round:
 
     # executes carousel round for all players
     def carousel_round(self):
-        carousel(list(self.PLAYERS.values()), self.current_round, self.pool_obj)
+        carousel(list(self.PLAYERS.values()), self.current_round, self.pool_obj,
+                 pickers=self.carousel_pickers, shuffle_items=self.carousel_fixes)
         for player in self.PLAYERS.values():
             if player:
                 log_to_file(player)
