@@ -208,46 +208,54 @@ class Herald(Minion):
         return loot
 
 
-def minion_round(player, current_round, others=None, other_rewards=None):
+def minion_round(player, current_round, others=None, other_rewards=None, pve_damage=False):
+    """Fight the monsters of round index current_round; True if the player won.
+
+    pve_damage (TFTConfig.pve_damage): a loss or draw costs the player HP like a player
+    combat (stage damage plus damage per surviving monster) without touching streaks.
+    other_rewards is the older path that also calls loss_round; the game rounds never set it.
+    """
+    # Only pass the flag when it is on, so code that replaces minion_combat keeps working.
+    extra = {"pve_damage": True} if pve_damage else {}
     # simulate minion round here
     # 2 melee minions - give 1 item component
     if current_round == 0:
-        combat_result = minion_combat(player, FirstMinion(), current_round, others, other_rewards)
+        combat_result = minion_combat(player, FirstMinion(), current_round, others, other_rewards, **extra)
         # print(f"Result against 2 melee minions {combat_result}")
 
     # 2 melee and 1 ranged minion - give 1 item component and 1 3 cost champion
     elif current_round == 1:
-        combat_result = minion_combat(player, SecondMinion(), current_round, others, other_rewards)
+        combat_result = minion_combat(player, SecondMinion(), current_round, others, other_rewards, **extra)
         # print(f"Result against 2 melee and 1 ranged minion {combat_result}")
 
     # 2 melee minions and 2 ranged minions - give 3 gold and 1 item component
     elif current_round == 2:
-        combat_result = minion_combat(player, ThirdMinion(), current_round, others, other_rewards)
+        combat_result = minion_combat(player, ThirdMinion(), current_round, others, other_rewards, **extra)
         # print(f"Result against 2 melee and 2 ranged minions {combat_result}")
 
     # 3 Krugs - give 3 gold and 3 item components
     elif current_round == 8:
-        combat_result = minion_combat(player, Krug(), current_round, others, other_rewards)
+        combat_result = minion_combat(player, Krug(), current_round, others, other_rewards, **extra)
         # print(f"Result against 3 krugs {combat_result}")
 
     # 1 Greater Murk Wolf and 4 Murk Wolves - give 3 gold and 3 item components
     elif current_round == 14:
-        combat_result = minion_combat(player, Wolf(), current_round, others, other_rewards)
+        combat_result = minion_combat(player, Wolf(), current_round, others, other_rewards, **extra)
         # print(f"Result against 1 greater wolf and 4 murk wolves {combat_result}")
 
     # 1 Crimson Raptor and 4 Raptors - give 6 gold and 4 item components
     elif current_round == 20:
-        combat_result = minion_combat(player, Raptor(), current_round, others, other_rewards)
+        combat_result = minion_combat(player, Raptor(), current_round, others, other_rewards, **extra)
         # print(f"Result against a crimson raptor and 4 raptors {combat_result}")
 
     # 1 Nexus Minion - give 6 gold and a full item
     elif current_round == 26:
-        combat_result = minion_combat(player, Nexus(), current_round, others, other_rewards)
+        combat_result = minion_combat(player, Nexus(), current_round, others, other_rewards, **extra)
         # print(f"Result against 1 nexus minion {combat_result}")
 
     # Rift Herald - give 6 gold and a full item (6-7 is round 32, 7-7 is round 38)
     elif current_round >= 32:
-        combat_result = minion_combat(player, Herald(), current_round, others, other_rewards)
+        combat_result = minion_combat(player, Herald(), current_round, others, other_rewards, **extra)
         # print(f"Result against rift herald {combat_result}")
 
     # invalid round! Do nothing
@@ -258,7 +266,7 @@ def minion_round(player, current_round, others=None, other_rewards=None):
 
 
 # modeled after combat_phase from game_round.py, except with a minion "player" versus the player
-def minion_combat(player, enemy, round, others=None, other_rewards=True):
+def minion_combat(player, enemy, round, others=None, other_rewards=True, pve_damage=False):
     # Base damage table of the player's rules profile (Simulator/game/rules.py); Set 4 by default.
     from Simulator.game.rules import get_rules
     ROUND_DAMAGE = get_rules(getattr(player, "rules", None)).round_damage_table()
@@ -296,6 +304,13 @@ def minion_combat(player, enemy, round, others=None, other_rewards=True):
                 for p in alive:
                     if p != player:
                         p.spill_reward(damage / len(alive))
+    elif pve_damage and index_won != 1:
+        # Lost (or timed out) against monsters: HP damage like a player combat. The fight result
+        # already holds stage damage + damage per surviving monster (champion.unit_damage).
+        player.pve_loss(damage)
+        alive = [o for o in (others or []) if o and o.health > 0 and o is not player]
+        for p in alive:
+            p.spill_reward(damage / len(alive))
     # player wins!
     if index_won == 1:
         loot = enemy.drop_loot(player.orb_history)
