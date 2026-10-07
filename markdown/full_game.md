@@ -27,7 +27,8 @@ from Simulator.simulators.tft_simulator import TFTConfig, parallel_env, env as t
 | Field | Default | Meaning |
 |-------|---------|---------|
 | `num_players` | `8` | Agents (`player_0` …) |
-| `max_actions_per_round` | `15` | Shop-phase actions before that player is truncated |
+| `max_actions_per_round` | `15` | Shop-phase actions per player per round (passes count) |
+| `pass_ends_turn` | `False` | A pass ends that player's shop phase for the round |
 | `reward_type` | `"winloss"` | Placement-style reward |
 | `render_mode` | `None` | `"porosight"` writes a PoroSight dump |
 | `render_path` | `"Games"` | Directory for JSON dumps |
@@ -128,7 +129,7 @@ Decode a sampled index with `ActionToken.action_space_to_action(index)`.
 
 `ActionMultiDiscrete` is `[pass, level, refresh, shop, board, bench, item]` with a `0` skip on every dimension. The first non-zero entry wins: `[1, *, …]` is pass, `[0, 0, 0, 0, 1, 1, *]` moves bench 0 onto board 0 and ignores item. Sample with `action_space.sample(mask=ActionMultiDiscrete.mask_to_sample_mask(mask))`.
 
-A shop phase is up to `max_actions_per_round` actions. After every living player is done (or truncated), combat runs and the next round starts.
+A shop phase is up to `max_actions_per_round` actions. With `pass_ends_turn=True` a pass also ends it. A player whose shop phase is over stays in the agent cycle: `info["turn_over"]` is `True`, its action mask only allows pass, and its actions are ignored. When every living player is done, combat runs and the next round starts. Players are not truncated at the cap; `truncations` stays `False`.
 
 ## Reward
 

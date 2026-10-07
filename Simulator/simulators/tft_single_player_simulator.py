@@ -43,6 +43,7 @@ class TFT_Single_Player_Simulator(gym.Env):
         self.multi_step = tft_config.multi_step_position
         self.action_count = 0
         self.max_actions_per_round = tft_config.max_actions_per_round
+        self.pass_ends_turn = tft_config.pass_ends_turn
         mask_space = getattr(tft_config.action_class, "action_mask_space", None)
         self.observation_space = Dict({
             "observations": self.observation_class.player_observation_space(),
@@ -60,7 +61,8 @@ class TFT_Single_Player_Simulator(gym.Env):
         self.player_manager = PlayerManager(config.NUM_PLAYERS, pool_obj,
                                             TFTConfig(observation_class=self.observation_class,
                                                       action_class=self.action_class,
-                                                      num_players=1))
+                                                      num_players=1,
+                                                      max_actions_per_round=self.max_actions_per_round))
         # Objects for the player manager
         self.PLAYER = self.player_manager.player_states['player_0']
 
@@ -149,7 +151,7 @@ class TFT_Single_Player_Simulator(gym.Env):
         }
         round_result = True
 
-        if self.taken_max_actions('player_0'):
+        if self.taken_max_actions('player_0') or (self.pass_ends_turn and decoded[0] == 0):
             round_result = self.game_round.play_game_round()
             if is_porosight_render(self.render_mode):
                 self.game_state.store_single_player_battle("player_0", won=round_result)

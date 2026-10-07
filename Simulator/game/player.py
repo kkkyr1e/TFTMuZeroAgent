@@ -108,6 +108,9 @@ class Player:
         # --- Game Related Variables ---
         self.round = 0
         self.actions_remaining = 0  # Will reset to max_actions from player_manager
+        # Per-round action budget, used to scale actions_remaining in observations.
+        # PlayerManager sets it from TFTConfig.max_actions_per_round.
+        self.actions_per_round = config.ACTIONS_PER_TURN
 
         # --- Board Related Variables ---
         # Triple catalog tracks the star level of each champion in the player's possession

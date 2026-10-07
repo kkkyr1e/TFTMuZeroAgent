@@ -24,6 +24,8 @@ class PlayerManager:
             player: player_class(self.pool_obj, player_id)
             for player_id, player in enumerate(self.players)
         }
+        for player_state in self.player_states.values():
+            player_state.actions_per_round = tft_config.max_actions_per_round
 
         self.observation_states = {
             player: tft_config.observation_class(self.player_states[player])
@@ -173,6 +175,8 @@ class PlayerManager:
         for x in range(config.NUM_PLAYERS):
             if f"player_{x}" not in self.player_states.keys():
                 self.player_states[f"player_{x}"] = player_class(self.pool_obj, x)
+        for player_state in self.player_states.values():
+            player_state.actions_per_round = self.config.max_actions_per_round
 
         self.observation_states = {
             player: self.config.observation_class(self.player_states[player])

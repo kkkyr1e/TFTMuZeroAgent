@@ -31,7 +31,11 @@ import time
 @dataclass
 class TFTConfig:
     num_players: int = 8
+    # Actions each agent may take in one planning phase; passes count as actions.
     max_actions_per_round: int = 15
+    # If True, a pass also ends the agent's planning phase for this round. Its later steps in
+    # the round are ignored (the mask only allows pass) until every agent is done.
+    pass_ends_turn: bool = False
     reward_type: str = "winloss"
     render_mode: str = None  # "porosight" or None
     render_path: str = "Games"
@@ -80,6 +84,7 @@ class TFT_Simulator(AECEnv):
         # --- Config Variables ---
         self.num_players = config.num_players
         self.max_actions_per_round = config.max_actions_per_round
+        self.pass_ends_turn = config.pass_ends_turn
         self.reward_type = config.reward_type
 
         # --- Observation and Action Classes ---
@@ -111,9 +116,14 @@ class TFT_Simulator(AECEnv):
         if player is None or agent not in player.player_states or player.player_states[agent] is None:
             return self._last_observations.get(agent)
         initial_observation = self.player_manager.fetch_observation(agent)
+        action_mask = initial_observation["action_mask"]
+        pass_only_mask = getattr(self.action_class, "pass_only_mask", None)
+        if getattr(self, "turn_over", {}).get(agent) and pass_only_mask is not None:
+            # The agent's planning phase is over; only a pass is meaningful until the round ends.
+            action_mask = pass_only_mask()
         observation = {
             "observations": self.player_manager.observation_states[agent].observation_to_input(initial_observation),
-            "action_mask": np.asarray(initial_observation["action_mask"]).reshape(-1).astype(np.int8),
+            "action_mask": np.asarray(action_mask).reshape(-1).astype(np.int8),
         }
         self._last_observations[agent] = observation
         return observation
@@ -132,6 +142,8 @@ class TFT_Simulator(AECEnv):
         self._last_observations = {}
         self.terminations = {agent: False for agent in self.agents}
         self.truncations = {agent: False for agent in self.agents}
+        # True once an agent has used its action budget or (with pass_ends_turn) passed this round
+        self.turn_over = {agent: False for agent in self.agents}
 
         # --- TFT Reward Related Variables ---
         self.rewards = {agent: 0 for agent in self.agents}
@@ -165,6 +177,7 @@ class TFT_Simulator(AECEnv):
                 "game_round": 1,
                 "save_battle": False,
                 "actions_taken": 0,
+                "turn_over": False,
             } for player_id in range(self.num_players)
         }
         for info in self.infos.values():
@@ -182,8 +195,6 @@ class TFT_Simulator(AECEnv):
         self.agent_selection = self._agent_selector.next()
         self.actions_taken = {agent: 0 for agent in self.agents}
 
-        self.truncated_agents = []
-
     # -- Query Functions --
     def is_alive(self, player_id):
         return not self.terminations[player_id]
@@ -195,12 +206,12 @@ class TFT_Simulator(AECEnv):
         return self.actions_taken[player_id] >= self.max_actions_per_round
 
     def round_done(self):
-        if all(self.truncations.values()):
-            for truncated_agent in self.truncated_agents:
-                if truncated_agent not in self.agents:
-                    self.agents.append(truncated_agent)
-            self.truncations = {agent: False for agent in self.agents}
-            self.truncated_agents = []
+        """True when every living agent's planning phase is over (budget used, or passed with pass_ends_turn).
+
+        Agents whose turn is over stay in the agent cycle, so the AEC order and the parallel wrapper
+        see the same agents every step; their actions are ignored until the round is played.
+        """
+        if all(self.turn_over[agent] for agent in self.agents if not self.terminations[agent]):
             self.agents.sort()
             self._agent_selector.reinit(self.agents)
             return True
@@ -215,6 +226,7 @@ class TFT_Simulator(AECEnv):
             if self.is_alive(player_id):
                 self.actions_taken[player_id] = 0
                 self.truncations[player_id] = False
+                self.turn_over[player_id] = False
 
     def calculate_winloss(self, placement):
         MAX_REWARD = 40
@@ -265,9 +277,11 @@ class TFT_Simulator(AECEnv):
         A regular game round consists of the following:
             1. Players shops refresh, unless locked (not implemented yet)
             2. Players perform actions
-                - In this env, players can only take MAX_ACTIONS_PER_ROUND actions per round
-                - If a player takes MAX_ACTIONS_PER_ROUND actions, they are truncated
-            3. Players battle after all alive players have taken their actions
+                - In this env, players can only take max_actions_per_round actions per round
+                - With pass_ends_turn, a pass also ends that player's actions for the round
+                - A player whose turn is over stays in the agent cycle; its actions are ignored
+                  and its mask only allows pass until the round is played
+            3. Players battle after all alive players have finished their actions
         """
         if (
             self.terminations[self.agent_selection]
@@ -278,14 +292,18 @@ class TFT_Simulator(AECEnv):
 
         agent = self.agent_selection
         self._cumulative_rewards[agent] = 0
-        # Perform action and update observations
-        action = np.asarray(action)
-        decoded = self.action_class.decode_env_action(action)
-        self.step_function.perform_action(agent, decoded)
+        if not self.turn_over[agent]:
+            # Perform action and update observations
+            action = np.asarray(action)
+            decoded = self.action_class.decode_env_action(action)
+            self.step_function.perform_action(agent, decoded)
 
-        self.actions_taken[agent] += 1
-        if is_porosight_render(self.render_mode):
-            self.game_state.store_action(agent, action)
+            self.actions_taken[agent] += 1
+            if is_porosight_render(self.render_mode):
+                self.game_state.store_action(agent, action)
+
+            if self.taken_max_actions(agent) or (self.pass_ends_turn and decoded[0] == 0):
+                self.turn_over[agent] = True
 
         self.infos[agent] = {
             "state_empty": self.player_manager.player_states[agent].state_empty(),
@@ -294,17 +312,11 @@ class TFT_Simulator(AECEnv):
             "game_round": self.game_round.current_round,
             "start_turn": False,
             "actions_taken": self.actions_taken[agent],
+            "turn_over": self.turn_over[agent],
             "save_battle": self.game_round.save_current_battle[agent]
         }
 
         self._clear_rewards()
-
-        _non_trunc_agents = self.agents[:]
-        if self.taken_max_actions(agent):
-            self.truncations[agent] = True
-            self.truncated_agents.append(agent)
-
-            _non_trunc_agents.remove(agent)
 
         if self._agent_selector.is_last():
             # TODO: Update rewards
@@ -348,6 +360,7 @@ class TFT_Simulator(AECEnv):
                                 "game_round": self.game_round.current_round,
                                 "shop": self.player_manager.player_states[player_id].shop,
                                 "start_turn": True,
+                                "turn_over": False,
                                 "save_battle": self.game_round.save_current_battle[player_id]
                             }
 
@@ -360,10 +373,6 @@ class TFT_Simulator(AECEnv):
                 if len(killed_agents) > 0 and _live_agents:
                     _live_agents.sort()
                     self._agent_selector.reinit(_live_agents)
-
-            elif self.truncated_agents and _non_trunc_agents:
-                _non_trunc_agents.sort()
-                self._agent_selector.reinit(_non_trunc_agents)
 
         self._accumulate_rewards()
 
