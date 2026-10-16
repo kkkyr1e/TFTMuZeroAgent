@@ -43,7 +43,10 @@ def initiate(champion):
             elif stat == 'spell_damage_reduction_percentage':
                 change_stat(champion, stat, original_value * value)
             elif stat == 'will_revive':
-                change_stat(champion, stat, value)
+                # A copy: the table's list would be shared by every Guardian Angel holder, and a
+                # Zilean orb is written into it in place (ability.zilean), so it would stay there for
+                # every later fight in the process.
+                change_stat(champion, stat, [list(slot) for slot in value])
             else:
                 change_stat(champion, stat, original_value + value, 'initiate_item_stat_change')
             
