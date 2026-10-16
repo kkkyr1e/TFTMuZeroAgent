@@ -388,7 +388,12 @@ class champion:
             getattr(ability, self.name)(self)
             if origin_class.get_origin_class_tier(self.team, 'mage') > 0 and origin_class.is_trait(self, 'mage'):
                 if len(self.enemy_team()) > 0:
-                    getattr(ability, self.name)(self)
+                    # the first cast may have killed its target: the second one needs a target too, like
+                    # the first (none left when the remaining enemies wait on a GA or Zilean revive)
+                    if not self.target:
+                        field.find_target(self)
+                    if self.target:
+                        getattr(ability, self.name)(self)
 
     def active(self):
         pass
