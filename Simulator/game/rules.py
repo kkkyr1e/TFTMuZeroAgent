@@ -10,7 +10,7 @@ a profile (unit tests, generators) keep the Set 4 rules.
 
 "set4" reproduces the values that were hard coded before profiles existed (same objects for
 the shop and Chosen odds, so a seed gives the same game). "set18" follows the live Set 18
-(Enchanted Wilds) economy as of patch 18.4. Sources and confidence for each value are in
+(Enchanted Wilds) economy as of patch 18.5. Sources and confidence for each value are in
 FORK_NOTES.md ("Rules profiles").
 
 Round indices: idx0 = 1-1 carousel + 1-2 PvE, idx1 = 1-3, idx2 = 1-4, then six indices per
@@ -128,7 +128,7 @@ SET4 = RulesProfile(
     unit_damage_table=tuple(DAMAGE_PER_UNIT),
 )
 
-# Shop odds in percent for levels 1..11 (Set 18, patch 18.4). Level 11 is only reachable with
+# Shop odds in percent for levels 1..11 (Set 18, patch 18.5). Level 11 is only reachable with
 # effects the simulator does not model (max_level is 10); the row is kept so a profile that
 # raises max_level has odds to use.
 SET18_SHOP_PERCENT = (
