@@ -84,8 +84,11 @@ settings a seed gives the same game as `develop` at `9149656`
 trajectories and a full Default_Agent game with hashes recorded on `develop`).
 
 Set 18 is "Enchanted Wilds" (patch 18.1 notes published 2026-08-25, live 2026-08-26); values
-are as of patch 18.4 (notes 2026-10-06). 18.1 changed no economy numbers, 18.2 changed XP, 18.3
-and 18.4 changed none (18.4 only shortened combat arrival/departure by 1 s each). Patch notes
+are as of patch 18.5 (live 2026-10-21). 18.1 changed no economy numbers, 18.2 changed XP, 18.3,
+18.4 and 18.5 changed none (18.4 only shortened combat arrival/departure by 1 s each; 18.5 only
+touched Augments and Wisps, per mid.gg/patch-notes/tft/18-5). Riot Data Dragon's
+`shop-drop-rates-data.json` for 18.5 (github.com/noxelisdev/TFT_DDragon, commit e46116f) has the
+same shop odds as the table below, unchanged since 18.1. Patch notes
 for 17.2-17.8 have no economy changes; 17.1 changed level 7 odds. Earlier values come from the
 patch that last changed them, checked against the LoL wiki and Set 18 tables on third-party
 sites. Percentages are cost 1/2/3/4/5.
